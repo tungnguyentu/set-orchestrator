@@ -15,19 +15,28 @@ Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Code
 
 ## Install
 
-Clone into your user-scope skills directory. Claude Code loads skills from `~/.claude/skills`. If you use `CLAUDE_CONFIG_DIR`, clone into `$CLAUDE_CONFIG_DIR/skills` instead.
+The repository is a Claude Code plugin and its own marketplace. Install it as a plugin (Claude Code 2.1.275 or later):
+
+```text
+/plugin install set-orchestrator --marketplace tungnguyentu/set-orchestrator
+```
+
+Or in two steps, from a session or from your shell with `claude plugin ...`:
+
+```text
+/plugin marketplace add tungnguyentu/set-orchestrator
+/plugin install set-orchestrator@set-orchestrator
+```
+
+The skill is then available as `/set-orchestrator` (full name `/set-orchestrator:set-orchestrator`). To update later, run `/plugin update set-orchestrator@set-orchestrator`; a new version is published whenever `version` in `.claude-plugin/plugin.json` changes.
+
+Without the plugin system, clone the repository into your skills directory. Claude Code loads a plugin directory placed under `~/.claude/skills` in every session. If you use `CLAUDE_CONFIG_DIR`, clone into `$CLAUDE_CONFIG_DIR/skills` instead.
 
 ```bash
 git clone https://github.com/tungnguyentu/set-orchestrator.git ~/.claude/skills/set-orchestrator
 ```
 
-Start a new Claude Code session inside an Orca terminal. The skill appears as `/set-orchestrator`.
-
-To update later:
-
-```bash
-git -C ~/.claude/skills/set-orchestrator pull
-```
+To update a clone, run `git -C ~/.claude/skills/set-orchestrator pull`.
 
 ## Usage
 
@@ -96,11 +105,12 @@ From then on, every implementation request goes through the dispatch loop: write
 
 | Path | Purpose |
 |------|---------|
-| `SKILL.md` | The skill itself: role rules, `on`, `status`, `off`, the coordinator loop, fallbacks, pitfalls. |
-| `references/coordinator-loop.md` | The detailed loop, the worker brief template, and the error table. |
-| `scripts/self-handle.sh` | Prints this session's Orca terminal handle. |
-| `scripts/pane-roster.py` | Lists the terminals in a pane and marks which ones are eligible workers. Resolves a worker by tab title. |
-| `scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
+| `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | Plugin manifest and the one-entry marketplace that points at this repository. |
+| `skills/set-orchestrator/SKILL.md` | The skill itself: role rules, `on`, `status`, `off`, the coordinator loop, fallbacks, pitfalls. |
+| `skills/set-orchestrator/references/coordinator-loop.md` | The detailed loop, the worker brief template, and the error table. |
+| `skills/set-orchestrator/scripts/self-handle.sh` | Prints this session's Orca terminal handle. |
+| `skills/set-orchestrator/scripts/pane-roster.py` | Lists the terminals in a pane and marks which ones are eligible workers. Resolves a worker by tab title. |
+| `skills/set-orchestrator/scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
 
 State file: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<terminal-handle>.json`.
 
