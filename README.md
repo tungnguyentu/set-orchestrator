@@ -47,20 +47,20 @@ The objective is optional. A bare `/set-orchestrator on` works: the Run is named
 /set-orchestrator on "Fix every failing test in the CI run for PR #412 without changing public APIs"
 /set-orchestrator on "Add TOTP two-factor login: enrollment, verification, recovery codes" --open claude:2,grok
 /set-orchestrator on "Migrate the billing service from Express to Fastify" --open codex,agy --skills ce
-/set-orchestrator on "Giải quyết các bug trong file plans/bugs.md" --open claude:3
+/set-orchestrator on "Fix every bug listed in plans/bugs.md" --open claude:3
 ```
 
 After `on`, you talk to the orchestrator in plain language and it dispatches:
 
 ```text
 Implement the enrollment screen first, then the verification endpoint; the recovery codes can wait.
-Giao cho claude-2 phần API, claude-1 làm UI.
-Mở thêm 1 codex và cho nó chạy test e2e.
+Give claude-2 the API and claude-1 the UI.
+Open one more codex and have it run the e2e tests.
 ```
 
 Say `/set-orchestrator status` to see the Run, the workers, the active dispatches and who owes a decision. Say `/set-orchestrator off` to drop the role.
 
-You can also start it in words: "set this session as orchestrator", "làm orchestrator", "điều phối các agent trong pane", "mở thêm 2 claude và 1 grok".
+You can also start it in words, in English or your own language: "set this session as orchestrator", "orchestrate the agents in this pane", "open two more claude and one grok".
 
 ### `--open`
 
