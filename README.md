@@ -34,14 +34,15 @@ git -C ~/.claude/skills/set-orchestrator pull
 Open the agents you want as workers in the same Orca pane as the Claude session, or let the skill open them. Then, in that Claude session:
 
 ```text
-/set-orchestrator on "<objective>" [--open <agent>[:<count>],...] [--skills ak|ce|superpowers|none]
+/set-orchestrator on ["<objective>"] [--open <agent>[:<count>],...] [--skills ak|ce|superpowers|none]
 /set-orchestrator status
 /set-orchestrator off
 ```
 
-`<objective>` is one sentence that says what this orchestration run is for. It is stored on the Orca Run and in the state file, and it is the frame for every task the orchestrator writes. Keep it specific: the goal, not the tasks. Examples:
+The objective is optional. A bare `/set-orchestrator on` works: the Run is named `orchestrate <pane path>` and you give the goal in your next message. When you pass one, `<objective>` is one sentence that says what this orchestration run is for. It is stored on the Orca Run and in the state file, and it is the frame for every task the orchestrator writes. Keep it specific: the goal, not the tasks. Examples:
 
 ```text
+/set-orchestrator on
 /set-orchestrator on "Ship the v4 redesign of the mail list: parity with the old list, then export to CSV"
 /set-orchestrator on "Fix every failing test in the CI run for PR #412 without changing public APIs"
 /set-orchestrator on "Add TOTP two-factor login: enrollment, verification, recovery codes" --open claude:2,grok
