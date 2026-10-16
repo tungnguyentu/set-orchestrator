@@ -1,6 +1,6 @@
 # set-orchestrator
 
-A [Claude Code](https://docs.claude.com/en/docs/claude-code) skill that turns the current Claude session into the standing orchestrator for the agents open in the same [Orca](https://orca.dev) pane. After `on`, the session stops writing code itself. It splits your requests into self-contained tasks, dispatches them to idle agents in that pane through `orca orchestration`, waits for `worker_done`, verifies the result, and reports.
+A [Claude Code](https://docs.claude.com/en/docs/claude-code) skill that turns the current Claude session into the standing orchestrator for the agents open in the same [Orca](https://www.onorca.dev) pane. After `on`, the session stops writing code itself. It splits your requests into self-contained tasks, dispatches them to idle agents in that pane through `orca orchestration`, waits for `worker_done`, verifies the result, and reports.
 
 Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Codex, Grok, Antigravity (`agy`), and others.
 
@@ -113,6 +113,24 @@ From then on, every implementation request goes through the dispatch loop: write
 | `skills/set-orchestrator/scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
 
 State file: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<terminal-handle>.json`.
+
+## Develop and test
+
+Validate the manifests and the skill files:
+
+```bash
+claude plugin validate --strict .
+```
+
+Run the eval suite in `evals/` (four cases: two natural-language triggers, a status question, and one request that must not trigger the skill). Each run is a real model call on your account:
+
+```bash
+claude plugin eval . --runs 1 --ablation none
+```
+
+The suite runs without Orca and without Bash, so it checks that the skill is selected and that the reply stays on the orchestrator role; it does not exercise dispatching.
+
+Scripts need bash and Python 3 (macOS and Linux). Windows is not supported.
 
 ## Safety notes
 
