@@ -67,6 +67,18 @@ Give claude-2 the API and claude-1 the UI.
 Open one more codex and have it run the e2e tests.
 ```
 
+A list becomes one task per item, dispatched in parallel to the idle workers (items that depend on each other wait for their predecessor). For example, after `/set-orchestrator on "Make the web app fast" --open claude:3`:
+
+```text
+1) Find and remove unnecessary re-renders.
+2) Cut the bundle size with lazy loading.
+3) Optimize requests and caching.
+4) Find slow queries and N+1 problems.
+5) Optimize images, fonts and scripts.
+```
+
+Each line turns into a spec with its own target files, acceptance commands and skill (for example `/ak:frontend-development` for items 1, 2 and 5, `/ak:databases` for item 4); the orchestrator verifies each commit and sends one final report.
+
 Say `/set-orchestrator status` to see the Run, the workers, the active dispatches and who owes a decision. Say `/set-orchestrator off` to drop the role.
 
 You can also start it in words, in English or your own language: "set this session as orchestrator", "orchestrate the agents in this pane", "open two more claude and one grok".
