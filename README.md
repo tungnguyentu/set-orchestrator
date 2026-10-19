@@ -109,7 +109,7 @@ Detection order is `ak`, `ce`, `superpowers`. Workers that run from another conf
 5. Sets a 300k auto-compact window on every Claude worker and on itself.
 6. Renames the tabs: the orchestrator becomes `orchestrator`, workers become `<agent>-<n>`. While a worker is busy, its tab shows the task title.
 
-From then on, every implementation request goes through the dispatch loop: write a spec, dispatch to an idle worker with a short brief, wait for `worker_done`, verify the commit or diff, retry a failed task once, and send one final report. Questions from workers are forwarded to you one at a time.
+From then on, every implementation request goes through the dispatch loop: write a spec, dispatch to an idle worker with a short brief, wait for `worker_done`, verify the commit or diff, retry a failed task once, and send one final report. Every task that touches UI, API, data access or assets carries a five-item performance checklist (re-renders, bundle size and lazy loading, requests and caching, slow queries and N+1, images, fonts and scripts); the orchestrator reads each diff against it and reports the result per task. Questions from workers are forwarded to you one at a time.
 
 `off` asks what to do with the terminals it opened, deletes the state file, and removes the role. It never resets the Orca Run.
 

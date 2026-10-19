@@ -73,6 +73,18 @@ If anything is unclear or a decision is not covered below, ask with the command 
 <the self-contained spec: Target, Change, Constraints, Ownership, Observable acceptance, git rules>
 ```
 
+## Performance checklist
+
+The orchestrator puts this list in the Constraints of every Task that touches UI, API, data access or static assets, and reads every diff against it in verify step 5. The worker reports, per item, what it checked or that the item does not apply.
+
+1. Unnecessary re-renders: no new render on unchanged props or state; memoize or split components where the change would otherwise re-render a subtree on every update.
+2. Bundle size: new routes, heavy components and rarely used libraries are lazy-loaded; no new import that pulls a large dependency into the initial bundle.
+3. Requests and caching: no duplicate or waterfall requests for the same data; responses that can be cached carry cache headers or go through the app's query cache.
+4. Slow queries and N+1: every loop that queries per item is replaced by a batched or joined query; new queries use an existing index or add one.
+5. Images, fonts and scripts: images sized and compressed with explicit dimensions, fonts subset or preloaded, third-party scripts deferred or async.
+
+Brief line to add under `=== TASK ===` Constraints: "Performance: do not regress re-renders, bundle size, requests and caching, query count, or asset loading; in your worker_done body list each of the five with ok, fixed, or n/a."
+
 ## Method and Context lines per skill family
 
 `on` records the skill family in the state file (`skill_family`: `ak`, `ce`, `superpowers` or `none`; detected from the orchestrator's own skills directory and plugin cache, overridable with `--skills`). Fill the two brief lines from this table. Every Method line ends with: "If a named skill is not installed in this terminal, say so in your worker_done body and work without it."
