@@ -22,14 +22,15 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$PANE" ] && [ -n "$SPEC" ] || { echo "open-agents.sh: --pane and --open are required" >&2; exit 2; }
 
-# Launch commands with permission prompts disabled. CC_LAUNCH keeps the shared
+# Launch commands. Claude starts in auto mode (bypass is disabled in the global
+# settings); the others keep their bypass flag. CC_LAUNCH keeps the shared
 # Serena wrapper when it is installed; CLAUDE_CONFIG_DIR is inherited from the
 # orchestrator so the worker uses the same account.
 CC_LAUNCH="$HOME/.local/bin/cc-launch"
 [ -x "$CC_LAUNCH" ] || CC_LAUNCH="claude"
 launch_cmd() {
   case "$1" in
-    claude) printf '%s%s --dangerously-skip-permissions' "${CLAUDE_CONFIG_DIR:+CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR }" "$CC_LAUNCH" ;;
+    claude) printf '%s%s --permission-mode auto' "${CLAUDE_CONFIG_DIR:+CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR }" "$CC_LAUNCH" ;;
     grok) printf 'grok --permission-mode bypassPermissions' ;;
     codex) printf 'codex --dangerously-bypass-approvals-and-sandbox' ;;
     agy|antigravity) printf 'agy --dangerously-skip-permissions' ;;

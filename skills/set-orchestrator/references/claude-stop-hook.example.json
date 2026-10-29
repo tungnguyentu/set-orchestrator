@@ -1,0 +1,16 @@
+{
+  "_comment": "OPTIONAL. Claude Code workers only (grok, codex and agy have no Stop hook; they rely on orca-done.sh plus coordinator verify). Merge ONLY the \"hooks\" object into the worker's settings.json (e.g. $CLAUDE_CONFIG_DIR/settings.json or <pane>/.claude/settings.local.json) and replace <SKILL_DIR> with the absolute path of the set-orchestrator skill directory. Delete this _comment key when copying. The hook blocks the turn from ending while a checklist whose \"worker\" equals $ORCA_TERMINAL_HANDLE is unfinished and has no done.json.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash <SKILL_DIR>/scripts/claude-stop-hook.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

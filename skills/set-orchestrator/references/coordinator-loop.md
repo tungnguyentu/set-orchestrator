@@ -7,7 +7,7 @@ Evidence: Orca 1.4.223 spike run outside an Orca terminal (reused Claude worker 
 0. Every spec ends with the ask rule: unclear point or uncovered decision -> `orca orchestration ask` (from the preamble) and wait; never guess, never open a local question dialog. The coordinator must then stay in `check --wait` so the answer arrives; a worker inside `ask` blocks until `reply` or its timeout.
 1. `ORCA terminal list --json | python3 scripts/pane-roster.py --pane "<pane>" --self $SELF` -> pick eligible terminals.
 2. For each Task: `ORCA terminal show --terminal <h> --json` (agentIdentity present) and `ORCA terminal wait --terminal <h> --for tui-idle --timeout-ms 120000`.
-3. Default: `ORCA orchestration task-create --spec "<spec>" --task-title "<title>" [--from $SELF]` -> `ORCA orchestration dispatch --task <task_id> --to <h> [--from $SELF]` (no `--inject`; read `result.dispatch.id`) -> write the compact brief below to a scratch file -> `ORCA terminal send --terminal <h> --text "$(cat brief)" --enter --wait-submit 15 --json`. Alternative with Orca's own preamble and supervision: `ORCA orchestration worker-start --task <task_id> --terminal <h> --worktree path:"<pane>" [--from $SELF]`. `--model/--effort` cannot be combined with `--terminal`; a reused worker keeps its own model.
+3. Default: `ORCA orchestration task-create --spec "<spec>" --task-title "<title>" [--from $SELF]` -> checklist: `cd <pane> && python3 $SKILL/scripts/init-checklist.py --task <task_id> --goal "<original goal>" --worker <h> --protected <glob>... --acceptance "<cmd>"... --item "<Done-when N>"...` (all agents; see `multi-agent-anti-skip.md`) -> `ORCA orchestration dispatch --task <task_id> --to <h> [--from $SELF]` (no `--inject`; read `result.dispatch.id`) -> write the compact brief below to a scratch file -> `ORCA terminal send --terminal <h> --text "$(cat brief)" --enter --wait-submit 15 --json`. Alternative with Orca's own preamble and supervision: `ORCA orchestration worker-start --task <task_id> --terminal <h> --worktree path:"<pane>" [--from $SELF]`. `--model/--effort` cannot be combined with `--terminal`; a reused worker keeps its own model.
 4. Check `state`, `stage`, `failedStage`, `lastError`; exit code 1 = failure even when `ok:true`.
 5. `ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 540000 --terminal $SELF` in a background shell command; a foreground command is killed at 600 s. `--types` is only the wake condition; the Delivery is the whole FIFO batch. Loop until every entry in the state file's `dispatches[]` is settled.
 6. Handle each message, then `ORCA orchestration check --ack <delivery_id> --wait ... --terminal $SELF` (ack plus next batch in one call).
@@ -57,20 +57,24 @@ Not seen in the spike: `inject_rejected`, `release_pending`, `outcome_unknown`, 
 
 ## Compact brief template (default dispatch path)
 
-Fill every placeholder; `$W` is the worker's own handle, `$C` the coordinator's. Verified on orca 1.4.223: a context-only Dispatch settles on `worker_done` exactly like an injected one (Task -> `completed`, worker row -> `unsupervised`/`retained`).
+Fill every placeholder; `$W` is the worker's own handle, `$C` the coordinator's. `$SKILL` is the absolute path of this skill directory, `$CHECKLIST` and `$REPORT` the absolute paths written by `init-checklist.py` before dispatch (all agents: claude, grok, codex, agy; no hook needed). <!-- anti-skip:multi-agent:brief --> Verified on orca 1.4.223: a context-only Dispatch settles on `worker_done` exactly like an injected one (Task -> `completed`, worker row -> `unsupervised`/`retained`).
 
 ```
 You are a dispatched Orca worker. Coordinator terminal: $C. Task: $TASK. Dispatch: $DISPATCH.
 Report ONLY through these commands (the coordinator cannot see this screen):
-- Done (exactly once, required): orca orchestration send --from $W --type worker_done --subject "<short status>" --body "<3-sentence summary>" --task-id $TASK --dispatch-id $DISPATCH --outcome succeeded   (use --outcome failed if not done)
+- Checklist: $CHECKLIST   (= <pane>/.orca/tasks/$TASK/checklist.json; after each item: python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id <N> --evidence "<command -> result | commit | file:line>"; never edit step text)
+- Report: $REPORT   (= <pane>/.orca/tasks/$TASK/report.json; python3 $SKILL/scripts/write-report.py --task $TASK --dispatch $DISPATCH --report $REPORT --step <N> --run "<command>")
+- Start ritual: pwd; git status --short; git log --oneline -3; cat $CHECKLIST; run the first acceptance command once; heartbeat "step 0/N".
+- Done (exactly once, required, the ONLY completion path): bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --subject "<short status>" --summary "<2 sentences>"   (it verifies the checklist, protected paths and acceptance, then sends worker_done; on "GATE FAILED" finish the missing items and rerun; if you cannot finish, rerun with --outcome failed and say what is not done)
+- Only if orca-done.sh is missing in this terminal: ask first; then orca orchestration send --from $W --type worker_done --subject "<short status>" --body "<DONE-WHEN: for each numbered item `N. done: <evidence>` or `N. skipped: <reason>`; then a 2-sentence summary>" --task-id $TASK --dispatch-id $DISPATCH --outcome succeeded   (use --outcome failed if any Done-when item is not done)
 - Question (blocks until answered): orca orchestration ask --from $W --question "<question>" --timeout-ms 1800000
 - Coordinator follow-ups: orca orchestration check --terminal $W --json
-- Heartbeat every ~5 min while working: orca orchestration send --from $W --type heartbeat --subject alive --task-id $TASK --dispatch-id $DISPATCH --phase "<investigating|implementing|reviewing>"
+- Heartbeat every ~5 min while working: orca orchestration send --from $W --type heartbeat --subject "step <k>/<N>: <item, short>" --task-id $TASK --dispatch-id $DISPATCH --phase "<investigating|implementing|reviewing>"
 If anything is unclear or a decision is not covered below, ask with the command above and wait; do not guess and do not open a local question dialog.
 - Method: <Method line for the skill family, table below>
 - Context: <Context line for the skill family, table below>
 === TASK ===
-<the self-contained spec: Target, Change, Constraints, Ownership, Observable acceptance, git rules>
+<the self-contained spec: Original goal, In scope, Out of scope, Target, Change, Constraints, Ownership, Protected paths (never edit, skip or weaken tests/fixtures/snapshots/CI to pass), Observable acceptance, Done-when checklist (numbered, identical to $CHECKLIST), git rules, worker_done evidence rule, ask rule>
 ```
 
 ## Performance checklist
@@ -84,6 +88,38 @@ The orchestrator puts this list in the Constraints of every Task that touches UI
 5. Images, fonts and scripts: images sized and compressed with explicit dimensions, fonts subset or preloaded, third-party scripts deferred or async.
 
 Brief line to add under `=== TASK ===` Constraints: "Performance: do not regress re-renders, bundle size, requests and caching, query count, or asset loading; in your worker_done body list each of the five with ok, fixed, or n/a."
+
+
+## Done-when checklist (anti-skip)
+
+Orchestrator writes the list; worker executes and reports; coordinator verifies.
+
+Good items (observable):
+- `1. Add failing test in path/to/file.test.ts for <behavior>`
+- `2. Implement until that test passes: <command>`
+- `3. Run <full acceptance command>; paste exit code`
+- `4. Commit on branch <name> with message <pattern>; do not push`
+
+Bad items (invite skipping):
+- `Implement the feature`
+- `Make sure everything works`
+- `Follow best practices`
+
+Split rule: if you need more than 8 items, create another Task with `--deps` on the first. One active concern per Task beats one long prompt the worker self-prioritizes.
+
+Verify rule: body must mention every number. Silence on an item = miss. Tests green alone do not clear unchecked items (e.g. commit, review skill, perf line).
+
+<!-- anti-skip:multi-agent:donewhen -->
+Checklist file and gate (all agents). The Done-when list also lives in `<pane>/.orca/tasks/<taskId>/checklist.json` (`init-checklist.py`), the worker marks items with `mark-item.py`, and it completes only through `orca-done.sh`, which runs `verify-checklist.py` and sends `worker_done` with the DONE-WHEN lines built from the file. Claude, Grok, Codex and agy follow the same path; a Claude Stop hook (`claude-stop-hook.example.json`) is an optional extra. A `worker_done` body without `DONE-WHEN:` and `gate:` lines was sent raw: run the gate yourself and treat a failure as the first failed attempt. Multi-step or risky Tasks get a `verify-<title>` Task (below). Full contract: `references/multi-agent-anti-skip.md`.
+
+## Verify Task
+
+Use after an implement Task with more than ~3 Done-when items, a change touching shared code, tests or data, or any worker that has overstated before.
+
+1. `task-create --task-title "verify-<title>" --deps '["<implement task id>"]'` with spec: Original goal; "Check the tree yourself; do not trust the implement worker's worker_done body or report; do not fix anything"; the implement checklist path; Ownership and Protected paths of the implement Task; Done-when: (1) `python3 $SKILL/scripts/verify-checklist.py --checklist <implement checklist> --protected-diff --rerun-acceptance --cwd <pane>` exits 0, (2) diff (`git show --stat <hash>`, `git diff <baseRef>`) stays inside Ownership and In scope, (3) every implement Done-when item matches the code with file:line, (4) no test was skipped, deleted or weakened, (5) findings written to its own report.
+2. `init-checklist.py` for the verify Task (its own `<pane>/.orca/tasks/<verify id>/checklist.json`).
+3. Dispatch it when the implement Task settles, to a different idle terminal than the implement worker when one exists (any agent type); same terminal only after `/clear` or equivalent.
+4. It completes through `orca-done.sh` like any Task. A finding = the implement Task failed verification: retry it once with "Previous attempt missed: <findings>".
 
 ## Method and Context lines per skill family
 
