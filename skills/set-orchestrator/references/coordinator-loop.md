@@ -4,10 +4,10 @@ Evidence: Orca 1.4.223 spike run outside an Orca terminal (reused Claude worker 
 
 ## Per-wave procedure
 
-0. Every spec ends with the ask rule: unclear point or uncovered decision -> `orca orchestration ask` (from the preamble) and wait; never guess, never open a local question dialog. The coordinator must then stay in `check --wait` so the answer arrives; a worker inside `ask` blocks until `reply` or its timeout.
+0. The ask rule lives in the worker contract (`<pane>/.orca/worker-contract.md`): unclear point or uncovered decision -> `orca orchestration ask` and wait; never guess, never open a local question dialog. The coordinator must then stay in `check --wait` so the answer arrives; a worker inside `ask` blocks until `reply` or its timeout.
 1. `ORCA terminal list --json | python3 scripts/pane-roster.py --pane "<pane>" --self $SELF` -> pick eligible terminals.
 2. For each Task: `ORCA terminal show --terminal <h> --json` (agentIdentity present) and `ORCA terminal wait --terminal <h> --for tui-idle --timeout-ms 120000`.
-3. Default: `ORCA orchestration task-create --spec "<spec>" --task-title "<title>" [--from $SELF]` -> checklist: `cd <pane> && python3 $SKILL/scripts/init-checklist.py --task <task_id> --goal "<original goal>" --worker <h> --protected <glob>... --acceptance "<cmd>"... --item "<Done-when N>"...` (all agents; see `multi-agent-anti-skip.md`) -> `ORCA orchestration dispatch --task <task_id> --to <h> [--from $SELF]` (no `--inject`; read `result.dispatch.id`) -> write the compact brief below to a scratch file -> `ORCA terminal send --terminal <h> --text "$(cat brief)" --enter --wait-submit 15 --json`. Alternative with Orca's own preamble and supervision: `ORCA orchestration worker-start --task <task_id> --terminal <h> --worktree path:"<pane>" [--from $SELF]`. `--model/--effort` cannot be combined with `--terminal`; a reused worker keeps its own model.
+3. Default: `ORCA orchestration task-create --spec "<spec>" --task-title "<title>" [--from $SELF]` -> checklist: `cd <pane> && python3 $SKILL/scripts/init-checklist.py --task <task_id> --goal "<original goal>" --worker <h> --protected <glob>... --acceptance "<cmd>"... --item "<Done-when N>"...` (all agents; see `multi-agent-anti-skip.md`) -> `ORCA orchestration dispatch --task <task_id> --to <h> [--from $SELF]` (no `--inject`; read `result.dispatch.id`) -> ensure the contract is installed (`bash $SKILL/scripts/install-worker-contract.sh --pane <pane> --skill $SKILL --family <skill_family>`, no-op when current) -> write the short brief below to a scratch file -> `ORCA terminal send --terminal <h> --text "$(cat brief)" --enter --wait-submit 15 --json`. Alternative with Orca's own preamble and supervision: `ORCA orchestration worker-start --task <task_id> --terminal <h> --worktree path:"<pane>" [--from $SELF]`. `--model/--effort` cannot be combined with `--terminal`; a reused worker keeps its own model.
 4. Check `state`, `stage`, `failedStage`, `lastError`; exit code 1 = failure even when `ok:true`.
 5. `ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 540000 --terminal $SELF` in a background shell command; a foreground command is killed at 600 s. `--types` is only the wake condition; the Delivery is the whole FIFO batch. Loop until every entry in the state file's `dispatches[]` is settled.
 6. Handle each message, then `ORCA orchestration check --ack <delivery_id> --wait ... --terminal $SELF` (ack plus next batch in one call).
@@ -33,7 +33,7 @@ Remaining debts: `ORCA orchestration worker-list --run <id> --terminal-state rec
 
 ## Reused worker context
 
-Every Claude worker gets `/autocompact 300k` once (step 7 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The brief's Context line tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak:handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
+Every Claude worker gets `/autocompact 300k` once (step 7 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The contract's Context section tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak:handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
 
 A Claude Code worker that handles several Tasks in a row fills its context. Its status line in `terminal read` shows `Context ██░░░░░░░░ NN%`. Rule: before a new brief to a settled, idle terminal with NN above 70, send `/clear` and wait for `tui-idle`; then send the brief. Never `/clear` a terminal with an active Dispatch. For Codex, Grok or Gemini use their own reset command when known; otherwise skip and note it in the report.
 
@@ -56,26 +56,34 @@ A Claude Code worker that handles several Tasks in a row fills its context. Its 
 Not seen in the spike: `inject_rejected`, `release_pending`, `outcome_unknown`, `nested_worker_depth_exceeded`.
 
 ## Compact brief template (default dispatch path)
+<!-- worker-contract:brief -->
+
+Two parts. (1) The shared worker contract `<pane>/.orca/worker-contract.md`, installed once per pane by `scripts/install-worker-contract.sh` (SKILL.md `on` step 8b): reply/ask/heartbeat/escalation commands, completion rules, start ritual, mark-item/write-report usage, and the Method/Context lines for `skill_family`. A worker reads it once per session. (2) The per-dispatch brief below: only the values that change per Task (about 12 lines). Do not paste contract rules, the Method/Context lines or the ask rule into it.
 
 Fill every placeholder; `$W` is the worker's own handle, `$C` the coordinator's. `$SKILL` is the absolute path of this skill directory, `$CHECKLIST` and `$REPORT` the absolute paths written by `init-checklist.py` before dispatch (all agents: claude, grok, codex, agy; no hook needed). <!-- anti-skip:multi-agent:brief --> Verified on orca 1.4.223: a context-only Dispatch settles on `worker_done` exactly like an injected one (Task -> `completed`, worker row -> `unsupervised`/`retained`).
 
 ```
-You are a dispatched Orca worker. Coordinator terminal: $C. Task: $TASK. Dispatch: $DISPATCH.
-Report ONLY through these commands (the coordinator cannot see this screen):
-- Checklist: $CHECKLIST   (= <pane>/.orca/tasks/$TASK/checklist.json; after each item: python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id <N> --evidence "<command -> result | commit | file:line>"; never edit step text)
-- Report: $REPORT   (= <pane>/.orca/tasks/$TASK/report.json; python3 $SKILL/scripts/write-report.py --task $TASK --dispatch $DISPATCH --report $REPORT --step <N> --run "<command>")
-- Start ritual: pwd; git status --short; git log --oneline -3; cat $CHECKLIST; run the first acceptance command once; heartbeat "step 0/N".
-- Done (exactly once, required, the ONLY completion path): bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --subject "<short status>" --summary "<2 sentences>"   (it verifies the checklist, protected paths and acceptance, then sends worker_done; on "GATE FAILED" finish the missing items and rerun; if you cannot finish, rerun with --outcome failed and say what is not done)
-- Only if orca-done.sh is missing in this terminal: ask first; then orca orchestration send --from $W --type worker_done --subject "<short status>" --body "<DONE-WHEN: for each numbered item `N. done: <evidence>` or `N. skipped: <reason>`; then a 2-sentence summary>" --task-id $TASK --dispatch-id $DISPATCH --outcome succeeded   (use --outcome failed if any Done-when item is not done)
-- Question (blocks until answered): orca orchestration ask --from $W --question "<question>" --timeout-ms 1800000
-- Coordinator follow-ups: orca orchestration check --terminal $W --json
-- Heartbeat every ~5 min while working: orca orchestration send --from $W --type heartbeat --subject "step <k>/<N>: <item, short>" --task-id $TASK --dispatch-id $DISPATCH --phase "<investigating|implementing|reviewing>"
-If anything is unclear or a decision is not covered below, ask with the command above and wait; do not guess and do not open a local question dialog.
-- Method: <Method line for the skill family, table below>
-- Context: <Context line for the skill family, table below>
+Read once if new: .orca/worker-contract.md
+Coordinator: $C | Task: $TASK | Dispatch: $DISPATCH | You: $W
+Checklist: $CHECKLIST
+Report: $REPORT
+Skill: $SKILL
+Finish ONLY: bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --summary "…"
 === TASK ===
-<the self-contained spec: Original goal, In scope, Out of scope, Target, Change, Constraints, Ownership, Protected paths (never edit, skip or weaken tests/fixtures/snapshots/CI to pass), Observable acceptance, Done-when checklist (numbered, identical to $CHECKLIST), git rules, worker_done evidence rule, ask rule>
+Goal: <one sentence original goal>
+Change: <1–2 sentences>
+Ownership: <paths>
+Out of scope: <short>
+Acceptance: <one command>
+Done-when: see checklist (mark with: python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id N --evidence "…")
 ```
+
+Notes:
+- The full spec (In scope, Constraints, Protected paths, every acceptance command, numbered Done-when) lives in the Orca Task (`task-create --spec`) and in `$CHECKLIST` (`protectedPaths`, `acceptanceCommands`, `items`); the brief carries only the one-line view. The gate enforces the checklist regardless of brief length.
+- Retry reason ("Previous attempt failed: …"), a domain skill ("also load `<skill>` first"), the branch, a no-commit instruction or the performance constraint go into `Change:` in a few words; never re-add the contract text.
+- Raw `worker_done` stays an ask-first fallback: the contract tells the worker to use it only when `orca-done.sh` is missing in its terminal and you answered its `ask` saying so.
+- Before every send, make sure `<pane>/.orca/worker-contract.md` exists (rerun `install-worker-contract.sh`; it is a no-op when current). A worker that has never seen the file (new terminal, or after `/clear`) reads it because of the first line.
+- On Linux replace `orca` with the resolved executable in the contract (`--orca <exe>` on install).
 
 ## Performance checklist
 
@@ -107,7 +115,7 @@ Bad items (invite skipping):
 
 Split rule: if you need more than 8 items, create another Task with `--deps` on the first. One active concern per Task beats one long prompt the worker self-prioritizes.
 
-Verify rule: body must mention every number. Silence on an item = miss. Tests green alone do not clear unchecked items (e.g. commit, review skill, perf line).
+Verify rule: the `worker_done` body (built by `orca-done.sh` from the checklist, not by the brief) must mention every number. Silence on an item = miss. Tests green alone do not clear unchecked items (e.g. commit, review skill, perf line).
 
 <!-- anti-skip:multi-agent:donewhen -->
 Checklist file and gate (all agents). The Done-when list also lives in `<pane>/.orca/tasks/<taskId>/checklist.json` (`init-checklist.py`), the worker marks items with `mark-item.py`, and it completes only through `orca-done.sh`, which runs `verify-checklist.py` and sends `worker_done` with the DONE-WHEN lines built from the file. Claude, Grok, Codex and agy follow the same path; a Claude Stop hook (`claude-stop-hook.example.json`) is an optional extra. A `worker_done` body without `DONE-WHEN:` and `gate:` lines was sent raw: run the gate yourself and treat a failure as the first failed attempt. Multi-step or risky Tasks get a `verify-<title>` Task (below). Full contract: `references/multi-agent-anti-skip.md`.
@@ -123,22 +131,22 @@ Use after an implement Task with more than ~3 Done-when items, a change touching
 
 ## Method and Context lines per skill family
 
-`on` records the skill family in the state file (`skill_family`: `ak`, `ce`, `superpowers` or `none`; detected from the orchestrator's own skills directory and plugin cache, overridable with `--skills`). Fill the two brief lines from this table. Every Method line ends with: "If a named skill is not installed in this terminal, say so in your worker_done body and work without it."
+`on` records the skill family in the state file (`skill_family`: `ak`, `ce`, `superpowers` or `none`; detected from the orchestrator's own skills directory and plugin cache, overridable with `--skills`). `install-worker-contract.sh` copies the family's two lines from this table into the Method and Context sections of `<pane>/.orca/worker-contract.md` (parsed from this table; keep its row format). They are not repeated in per-dispatch briefs. The script appends to every Method line: "If a named skill is not installed in this terminal, say so in your worker_done summary and work without it."
 
 | Family | Method line | Context line |
 |--------|-------------|--------------|
 | `ak` (AgentKit) | Invoke the named skill as your first step and follow it to the end; it carries the user's rules (brainstorm gate, tests, review). Implementation: `/ak:cook "<task title>"`. Bug, failing test or CI error: `/ak:debug "<symptom>"` to prove the cause, then `/ak:fix`. Before worker_done: `/ak:code-review` on your diff and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first run `/ak:handoff "task $TASK" --output plans/handoffs/session-handoff-$W.md --force`, then `/compact`, then continue from that file. |
 | `ce` (compound-engineering) | Invoke the named skill as your first step and follow it to the end. Implementation: `/ce-plan "<task title>: <one-line change>"` then `/ce-work <plan path it wrote>`; for a change under about 20 lines `/ce-work "<task title>"` directly. Bug, failing test or CI error: `/ce-debug "<symptom>"` then `/ce-work` on its fix. Before worker_done: `/ce-code-review` and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first run `/ce-handoff create "task $TASK"` and copy its output to plans/handoffs/session-handoff-$W.md, then `/compact`, then continue from that file. |
-| `superpowers` | Use the superpowers skills; the spec below is the approved design, so skip brainstorming. Implementation: `writing-plans` then `executing-plans`, with `test-driven-development` while coding. Bug, failing test or CI error: `systematic-debugging` first. Before worker_done: `requesting-code-review` and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first write plans/handoffs/session-handoff-$W.md (task, what is done, what is next, open questions), then `/compact`, then continue from that file. |
-| `none` | Work directly: read the code around the target, make the change, run the acceptance commands below, and review your own diff before worker_done. | Same as `superpowers`. |
+| `superpowers` | Use the superpowers skills; the brief's TASK block and checklist are the approved design, so skip brainstorming. Implementation: `writing-plans` then `executing-plans`, with `test-driven-development` while coding. Bug, failing test or CI error: `systematic-debugging` first. Before worker_done: `requesting-code-review` and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first write plans/handoffs/session-handoff-$W.md (task, what is done, what is next, open questions), then `/compact`, then continue from that file. |
+| `none` | Work directly: read the code around the target, make the change, run the brief's Acceptance command, and review your own diff before worker_done. | Same as `superpowers`. |
 
-A domain skill named in the spec (for example `/ak:frontend-development`, `/ce-test-browser`) is appended to the Method line as "also load <skill> first".
+A domain skill named in the spec (for example `/ak:frontend-development`, `/ce-test-browser`) goes into the brief's `Change:` line as "also load <skill> first".
 
-On Linux replace `orca` with the resolved executable (for example `orca-ide`) inside the brief as well.
+On Linux pass `--orca <resolved executable>` (for example `orca-ide`) to `install-worker-contract.sh`.
 
 ## What workers see (verbatim excerpt of the injected preamble)
 
-This is what `worker-start` or `dispatch --inject` types into the worker's prompt (about 5 KB); the compact brief above replaces it on the default path. Values in angle brackets are filled with real ones.
+This is what `worker-start` or `dispatch --inject` types into the worker's prompt (about 5 KB); the worker contract (once per pane) plus the short brief above replace it on the default path. Values in angle brackets are filled with real ones.
 
 ```
 You are working inside Orca, a multi-agent IDE. You are a dispatched worker.

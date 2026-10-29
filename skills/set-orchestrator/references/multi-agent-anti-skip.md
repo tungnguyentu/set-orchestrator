@@ -10,7 +10,8 @@ Workers in one pane can be any mix of `claude`, `grok`, `codex` and `agy` (Antig
 4. The worker completes ONLY with `bash SKILL/scripts/orca-done.sh ...`. The script runs `verify-checklist.py` (items, report, protected paths, acceptance commands) and sends `worker_done` only when the gate passes. A failed gate prints the misses and sends nothing.
 5. When the worker cannot finish, it still uses the script, with `--outcome failed --summary "<what is not done and why>"`: the body then lists each item as done or skipped, honestly.
 6. Raw `orca orchestration send --type worker_done` is allowed only when the script itself is unavailable in that terminal and the coordinator answered an `ask` saying so.
-7. The coordinator verifies anyway (section 9). The gate makes skipping visible; it does not replace review.
+7. The coordinator verifies anyway (section 10). The gate makes skipping visible; it does not replace review.
+8. Short brief + contract file. <!-- worker-contract:anti-skip --> Items 2-6, the start ritual (section 8), heartbeat format (section 7) and the Method/Context lines are written once per pane in `<pane>/.orca/worker-contract.md` (`scripts/install-worker-contract.sh`, template `references/worker-contract.md`). Each dispatch sends only the short brief (`references/coordinator-loop.md`): ids, checklist/report/skill paths, the `Finish ONLY: … orca-done.sh …` line and a one-line Goal/Change/Ownership/Out of scope/Acceptance. The checklist file carries the numbered items, protected paths and acceptance commands, so brief length does not weaken the gate.
 
 ## 2. checklist.json schema
 
@@ -46,6 +47,7 @@ Workers in one pane can be any mix of `claude`, `grok`, `codex` and `agy` (Antig
 | `scripts/write-report.py` | worker | Merge a step into `report.json`; `--run "<cmd>"` executes the command and records exit code and output tail |
 | `scripts/verify-checklist.py` | orca-done, coordinator, verify Task, optional hook | Gate; exit 0 pass, exit 2 with misses on stderr; JSON summary on stdout |
 | `scripts/orca-done.sh` | worker | The only completion path: gate, then `worker_done` with DONE-WHEN lines built from the checklist |
+| `scripts/install-worker-contract.sh` | coordinator | Install/refresh `<pane>/.orca/worker-contract.md` once per pane (`--pane`, `--skill`, `--family`, `--force`) |
 | `scripts/claude-stop-hook.sh` | Claude only, optional | Stop hook that refuses to end the turn while the worker's checklist is open |
 
 ## 4. One concern per Task, and a verify Task
@@ -68,6 +70,8 @@ Every spec lists Protected paths, and the checklist carries them. The worker mus
 Every heartbeat names the item being worked: `--subject "step <k>/<N>: <item text, short>"`. A heartbeat that stays on the same step for three beats, or jumps to N/N with no `mark-item` evidence in the checklist, is a signal to `terminal read` that worker.
 
 ## 8. Start ritual (first actions of every worker)
+
+Stated in the worker contract; the brief does not repeat it.
 
 1. `pwd` (must be the pane path) and `git status --short`, `git log --oneline -3` (branch and base).
 2. Read the checklist: `cat <checklist path>`; restate the Original goal and the N items in one line each.
