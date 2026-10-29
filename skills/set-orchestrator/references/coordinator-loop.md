@@ -7,11 +7,12 @@ Evidence: Orca 1.4.223 spike run outside an Orca terminal (reused Claude worker 
 0. The ask rule lives in the worker contract (`<pane>/.orca/worker-contract.md`): unclear point or uncovered decision -> `orca orchestration ask` and wait; never guess, never open a local question dialog. The coordinator must then stay in `check --wait` so the answer arrives; a worker inside `ask` blocks until `reply` or its timeout.
 1. `ORCA terminal list --json | python3 scripts/pane-roster.py --pane "<pane>" --self $SELF` -> pick eligible terminals.
 2. For each Task: `ORCA terminal show --terminal <h> --json` (agentIdentity present) and `ORCA terminal wait --terminal <h> --for tui-idle --timeout-ms 120000`.
-3. Default: `ORCA orchestration task-create --spec "<spec>" --task-title "<title>" [--from $SELF]` -> checklist: `cd <pane> && python3 $SKILL/scripts/init-checklist.py --task <task_id> --goal "<original goal>" --worker <h> --protected <glob>... --acceptance "<cmd>"... --item "<Done-when N>"...` (all agents; see `multi-agent-anti-skip.md`) -> `ORCA orchestration dispatch --task <task_id> --to <h> [--from $SELF]` (no `--inject`; read `result.dispatch.id`) -> ensure the contract is installed (`bash $SKILL/scripts/install-worker-contract.sh --pane <pane> --skill $SKILL --family <skill_family>`, no-op when current) -> write the short brief below to a scratch file -> `ORCA terminal send --terminal <h> --text "$(cat brief)" --enter --wait-submit 15 --json`. Alternative with Orca's own preamble and supervision: `ORCA orchestration worker-start --task <task_id> --terminal <h> --worktree path:"<pane>" [--from $SELF]`. `--model/--effort` cannot be combined with `--terminal`; a reused worker keeps its own model.
+3. Default, one line per Task: `bash $SKILL/scripts/dispatch.sh --from $SELF --to <h> --title "<title>" --spec-file <spec.md> --goal "<original goal>" --change "<1-2 sentences>" --ownership "<paths>" --out-of-scope "<short>" --acceptance "<cmd>"... --protected <glob>... [--deps '<json>'] [--wave N] [--attempt N]`. It does `task-create` -> `init-checklist.py` (Done-when items from the spec, 1-8 or it refuses; prints `specHash`, writes `<state dir>/specs/<task>.json`) -> `install-worker-contract.sh` (no-op when current) -> `dispatch` (no `--inject`) -> short brief below -> `terminal send` -> tab rename -> `dispatches[]` entry with `spec_hash`. Alternative with Orca's own preamble and supervision: `ORCA orchestration worker-start --task <task_id> --terminal <h> --worktree path:"<pane>" [--from $SELF]` (run `init-checklist.py` yourself and store its `specHash` in the entry). `--model/--effort` cannot be combined with `--terminal`; a reused worker keeps its own model.
+   Wave rule <!-- anti-skip:parallel-wave -->: dispatch Tasks in parallel only when their Ownership and Protected paths do not overlap; otherwise chain them with `--deps`. `--protected-diff` reads the whole worktree, so concurrent Tasks with overlapping paths fail each other's gate falsely.
 4. Check `state`, `stage`, `failedStage`, `lastError`; exit code 1 = failure even when `ok:true`.
 5. `ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 540000 --terminal $SELF` in a background shell command; a foreground command is killed at 600 s. `--types` is only the wake condition; the Delivery is the whole FIFO batch. Loop until every entry in the state file's `dispatches[]` is settled.
 6. Handle each message, then `ORCA orchestration check --ack <delivery_id> --wait ... --terminal $SELF` (ack plus next batch in one call).
-7. Verify the work, then complete the accounting below.
+7. `bash <state dir>/gate/<entry gate_hash>/settle.sh --from $SELF --task <task_id> --rename-back` (frozen copy; path printed by `dispatch.sh` as `settle`) (gate with the stored `spec_hash`; never a bare `verify-checklist.py` without `--expect-spec-hash`), review the diff, then complete the accounting below.
 
 Delivery shape: `result` has `runId, deliveryId, messages[], count, replayed, acknowledged, timedOut, cancelled, connectionLost`. Message: `id, from_handle, to_handle, subject, body, type, payload (JSON string), created_at`.
 - `question`: `from_handle=dispatch:<id>`, payload `{taskId, dispatchId, question, options}`; answer with `reply --id <msg.id>`.
@@ -33,7 +34,7 @@ Remaining debts: `ORCA orchestration worker-list --run <id> --terminal-state rec
 
 ## Reused worker context
 
-Every Claude worker gets `/autocompact 300k` once (step 7 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The contract's Context section tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak:handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
+Every Claude worker gets `/autocompact 300k` once (step 9 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The contract's Context section tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak:handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
 
 A Claude Code worker that handles several Tasks in a row fills its context. Its status line in `terminal read` shows `Context ██░░░░░░░░ NN%`. Rule: before a new brief to a settled, idle terminal with NN above 70, send `/clear` and wait for `tui-idle`; then send the brief. Never `/clear` a terminal with an active Dispatch. For Codex, Grok or Gemini use their own reset command when known; otherwise skip and note it in the report.
 
@@ -60,7 +61,7 @@ Not seen in the spike: `inject_rejected`, `release_pending`, `outcome_unknown`, 
 
 Two parts. (1) The shared worker contract `<pane>/.orca/worker-contract.md`, installed once per pane by `scripts/install-worker-contract.sh` (SKILL.md `on` step 8b): reply/ask/heartbeat/escalation commands, completion rules, start ritual, mark-item/write-report usage, and the Method/Context lines for `skill_family`. A worker reads it once per session. (2) The per-dispatch brief below: only the values that change per Task (about 12 lines). Do not paste contract rules, the Method/Context lines or the ask rule into it.
 
-Fill every placeholder; `$W` is the worker's own handle, `$C` the coordinator's. `$SKILL` is the absolute path of this skill directory, `$CHECKLIST` and `$REPORT` the absolute paths written by `init-checklist.py` before dispatch (all agents: claude, grok, codex, agy; no hook needed). <!-- anti-skip:multi-agent:brief --> Verified on orca 1.4.223: a context-only Dispatch settles on `worker_done` exactly like an injected one (Task -> `completed`, worker row -> `unsupervised`/`retained`).
+Fill every placeholder; `$W` is the worker's own handle, `$C` the coordinator's. `$SKILL` is the absolute path of this skill directory, `$CHECKLIST` and `$REPORT` the absolute paths written by `init-checklist.py` before dispatch, `$SPEC_HASH` the specHash it printed (`dispatch.sh` fills all of these) (all agents: claude, grok, codex, agy; no hook needed). <!-- anti-skip:multi-agent:brief --> Verified on orca 1.4.223: a context-only Dispatch settles on `worker_done` exactly like an injected one (Task -> `completed`, worker row -> `unsupervised`/`retained`).
 
 ```
 Read once if new: .orca/worker-contract.md
@@ -68,14 +69,14 @@ Coordinator: $C | Task: $TASK | Dispatch: $DISPATCH | You: $W
 Checklist: $CHECKLIST
 Report: $REPORT
 Skill: $SKILL
-Finish ONLY: bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --summary "…"
+Finish ONLY: bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --expect-spec-hash $SPEC_HASH --summary "…"
 === TASK ===
 Goal: <one sentence original goal>
 Change: <1–2 sentences>
 Ownership: <paths>
 Out of scope: <short>
 Acceptance: <one command>
-Done-when: see checklist (mark with: python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id N --evidence "…")
+Done-when: see checklist (mark with: python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id N --evidence "…" or --run "<cmd>")
 ```
 
 Notes:
@@ -118,14 +119,14 @@ Split rule: if you need more than 8 items, create another Task with `--deps` on 
 Verify rule: the `worker_done` body (built by `orca-done.sh` from the checklist, not by the brief) must mention every number. Silence on an item = miss. Tests green alone do not clear unchecked items (e.g. commit, review skill, perf line).
 
 <!-- anti-skip:multi-agent:donewhen -->
-Checklist file and gate (all agents). The Done-when list also lives in `<pane>/.orca/tasks/<taskId>/checklist.json` (`init-checklist.py`), the worker marks items with `mark-item.py`, and it completes only through `orca-done.sh`, which runs `verify-checklist.py` and sends `worker_done` with the DONE-WHEN lines built from the file. Claude, Grok, Codex and agy follow the same path; a Claude Stop hook (`claude-stop-hook.example.json`) is an optional extra. A `worker_done` body without `DONE-WHEN:` and `gate:` lines was sent raw: run the gate yourself and treat a failure as the first failed attempt. Multi-step or risky Tasks get a `verify-<title>` Task (below). Full contract: `references/multi-agent-anti-skip.md`.
+Checklist file and gate (all agents). The Done-when list also lives in `<pane>/.orca/tasks/<taskId>/checklist.json` (`init-checklist.py`), the worker marks items with `mark-item.py`, and it completes only through `orca-done.sh`, which runs `verify-checklist.py` and sends `worker_done` with the DONE-WHEN lines built from the file. The coordinator keeps the printed `specHash` in its state file and settles with `settle.sh` (`--expect-spec-hash`), because the checklist itself is worker-writable. Claude, Grok, Codex and agy follow the same path; a Claude Stop hook (`claude-stop-hook.example.json`) is an optional extra. A `worker_done` body without `DONE-WHEN:` and `gate:` lines was sent raw: run the gate yourself and treat a failure as the first failed attempt. Multi-step or risky Tasks get a `verify-<title>` Task (below). Full contract: `references/multi-agent-anti-skip.md`.
 
 ## Verify Task
 
 Use after an implement Task with more than ~3 Done-when items, a change touching shared code, tests or data, or any worker that has overstated before.
 
-1. `task-create --task-title "verify-<title>" --deps '["<implement task id>"]'` with spec: Original goal; "Check the tree yourself; do not trust the implement worker's worker_done body or report; do not fix anything"; the implement checklist path; Ownership and Protected paths of the implement Task; Done-when: (1) `python3 $SKILL/scripts/verify-checklist.py --checklist <implement checklist> --protected-diff --rerun-acceptance --cwd <pane>` exits 0, (2) diff (`git show --stat <hash>`, `git diff <baseRef>`) stays inside Ownership and In scope, (3) every implement Done-when item matches the code with file:line, (4) no test was skipped, deleted or weakened, (5) findings written to its own report.
-2. `init-checklist.py` for the verify Task (its own `<pane>/.orca/tasks/<verify id>/checklist.json`).
+1. `task-create --task-title "verify-<title>" --deps '["<implement task id>"]'` with spec: Original goal; "Check the tree yourself; do not trust the implement worker's worker_done body or report; do not fix anything"; the implement checklist path; Ownership and Protected paths of the implement Task; Done-when: (1) `python3 $SKILL/scripts/verify-checklist.py --checklist <implement checklist> --expect-spec-hash <implement spec_hash from the state file> --protected-diff --rerun-acceptance --cwd <pane>` exits 0, (2) diff (`git show --stat <hash>`, `git diff <baseRef>`) stays inside Ownership and In scope, (3) every implement Done-when item matches the code with file:line, (4) no test was skipped, deleted or weakened, (5) findings written to its own report.
+2. Dispatch it with `dispatch.sh` like any Task (its own checklist and `spec_hash`).
 3. Dispatch it when the implement Task settles, to a different idle terminal than the implement worker when one exists (any agent type); same terminal only after `/clear` or equivalent.
 4. It completes through `orca-done.sh` like any Task. A finding = the implement Task failed verification: retry it once with "Previous attempt missed: <findings>".
 

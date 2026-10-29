@@ -7,18 +7,23 @@ Usage:
 
 Optional: --goal "<original goal>", --protected <glob-or-prefix> (repeat),
 --acceptance "<command>" (repeat), --worker <terminal handle>, --force,
---no-exclude (do not add .orca/ to .git/info/exclude).
+--no-exclude (do not add .orca/ to .git/info/exclude),
+--spec-out PATH (coordinator-side copy of the hashed spec; keep it OUTSIDE the worktree,
+for example next to the state file: <state dir>/specs/<taskId>.json).
+
+Stdout: one JSON line with "specHash" (sha256 of the canonical spec, see checklist_spec.py).
+The coordinator stores that value in its state file (dispatches[].spec_hash) and always
+verifies with verify-checklist.py --expect-spec-hash <specHash>; the copy written into
+checklist.json is worker-writable and is never trusted on its own.
 
 Default output: .orca/tasks/<taskId>/checklist.json relative to the cwd.
 Never overwrites an existing checklist unless --force is given.
 Works the same for every agent (claude, grok, codex, agy): plain JSON, no hooks.
 """
-import argparse, hashlib, json, os, subprocess, sys
+import argparse, json, os, subprocess, sys
 
-
-def steps_hash(items):
-    raw = json.dumps([[i["id"], i["step"]] for i in items], ensure_ascii=False)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from checklist_spec import canonical_spec, spec_hash  # noqa: E402
 
 
 def git(*args, cwd=None):
@@ -40,6 +45,7 @@ def main():
     ap.add_argument("--worker", default="")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-exclude", action="store_true")
+    ap.add_argument("--spec-out", help="also write the canonical spec + specHash here (coordinator side)")
     a = ap.parse_args()
 
     items = [s.strip() for s in a.item if s.strip()]
@@ -68,8 +74,8 @@ def main():
         "originalGoal": a.goal,
         "worker": a.worker,
         "baseRef": git("rev-parse", "HEAD", cwd=workdir),
-        "stepsHash": steps_hash(entries),
     }
+    data["specHash"] = spec_hash(data)
     tmp = out + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -91,8 +97,18 @@ def main():
             except OSError as e:
                 print(f"init-checklist: could not update {excl}: {e}", file=sys.stderr)
 
+    if a.spec_out:
+        os.makedirs(os.path.dirname(os.path.abspath(a.spec_out)), exist_ok=True)
+        spec = dict(canonical_spec(data), specHash=data["specHash"], checklist=os.path.abspath(out))
+        with open(a.spec_out + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(spec, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(a.spec_out + ".tmp", a.spec_out)
+
+    print(f"specHash={data['specHash']}", file=sys.stderr)
     print(json.dumps({"ok": True, "checklist": os.path.abspath(out), "taskId": a.task,
-                      "items": len(entries), "baseRef": data["baseRef"]}))
+                      "items": len(entries), "baseRef": data["baseRef"], "specHash": data["specHash"],
+                      "specOut": os.path.abspath(a.spec_out) if a.spec_out else None}))
     return 0
 
 

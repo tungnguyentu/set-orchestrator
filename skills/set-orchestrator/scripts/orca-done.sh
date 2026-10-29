@@ -7,8 +7,10 @@
 #   orca-done.sh --from <workerHandle> --task <id> --dispatch <id> --checklist <path> \
 #     [--report <path>] [--subject "..."] [--summary "..."] [--orca <exe>] \
 #     [--outcome succeeded|failed] [--skip-gate] [--allow-protected <path>]... \
-#     [--cwd <repo dir>] [--fb-nonce <nonce>] [--dry-run]
+#     [--cwd <repo dir>] [--expect-spec-hash <specHash>] [--fb-nonce <nonce>] [--dry-run]
 #
+#   --expect-spec-hash H  passed through to verify-checklist.py (the brief's Finish line carries
+#                     the coordinator's specHash, so a checklist whose spec was edited fails here too).
 #   --outcome failed  skips the gate and reports honestly which items are not done.
 #   --skip-gate       sends without verifying; the body says "gate: SKIPPED" (coordinator treats as unverified).
 #   --fb-nonce N      Branch A (no Dispatch): after the gate, print an FB-START ... FB-<N>-END
@@ -20,7 +22,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORCA="${ORCA_CLI_COMMAND:-${ORCA_EXE:-orca}}"
 W=""; TASK=""; DISPATCH=""; CHECKLIST=""; REPORT=""; SUBJECT=""; SUMMARY=""
-OUTCOME="succeeded"; SKIP_GATE=0; FB=""; DRY=0; CWD=""
+OUTCOME="succeeded"; SKIP_GATE=0; FB=""; DRY=0; CWD=""; SPEC_HASH=""
 ALLOW=()
 die() { echo "orca-done.sh: $*" >&2; exit 2; }
 while [ $# -gt 0 ]; do
@@ -37,9 +39,10 @@ while [ $# -gt 0 ]; do
     --skip-gate) SKIP_GATE=1; shift ;;
     --allow-protected) ALLOW+=("--allow-protected" "${2:-}"); shift 2 ;;
     --cwd) CWD="${2:-}"; shift 2 ;;
+    --expect-spec-hash) SPEC_HASH="${2:-}"; shift 2 ;;
     --fb-nonce) FB="${2:-}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) die "unknown argument $1" ;;
   esac
 done
@@ -61,6 +64,7 @@ else
   args=(--checklist "$CHECKLIST" --protected-diff --rerun-acceptance)
   [ -n "$REPORT" ] && args+=(--require-report "$REPORT")
   [ -n "$CWD" ] && args+=(--cwd "$CWD")
+  [ -n "$SPEC_HASH" ] && args+=(--expect-spec-hash "$SPEC_HASH")
   [ ${#ALLOW[@]} -gt 0 ] && args+=("${ALLOW[@]}")
   if ! python3 "$HERE/verify-checklist.py" "${args[@]}"; then
     echo "orca-done.sh: GATE FAILED - worker_done NOT sent. Finish the missing items (mark-item.py with real evidence)" >&2

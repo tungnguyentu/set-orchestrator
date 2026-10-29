@@ -3,7 +3,7 @@
   "owner": { "name": "tungnguyentu" },
   "metadata": {
     "description": "Marketplace for the set-orchestrator Claude Code plugin",
-    "version": "1.0.4"
+    "version": "1.0.5"
   },
   "plugins": [
     {

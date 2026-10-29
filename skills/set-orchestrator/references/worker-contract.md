@@ -1,7 +1,7 @@
 # Orca worker contract
 <!-- worker-contract:v1 -->
 
-Read this file ONCE per session (re-read only if a brief says so). Every dispatch then arrives as a short brief that points here. `$C`, `$TASK`, `$DISPATCH`, `$W`, `$CHECKLIST`, `$REPORT`, `$SKILL` mean the values on the current brief's header lines; always use the absolute paths it gives.
+Read this file ONCE per session (re-read only if a brief says so). Every dispatch then arrives as a short brief that points here. `$C`, `$TASK`, `$DISPATCH`, `$W`, `$CHECKLIST`, `$REPORT`, `$SKILL` mean the values on the current brief's header lines (`$SPEC_HASH` is the value after `--expect-spec-hash` on its `Finish ONLY:` line); always use the absolute paths it gives.
 
 <!-- worker-contract:skill:start -->
 - `$SKILL` (skill dir, absolute): `{{SKILL_DIR}}`; the brief repeats it on its `Skill:` line, which wins if they differ.
@@ -28,12 +28,12 @@ You are an Orca worker. The coordinator cannot see this screen: a question or re
 
 ## Checklist and report
 
-- After each item: `python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id <N> --evidence "<command -> result | commit | file:line>"` (`--fail` records evidence but keeps the item open). Never edit step text; never mark an item you did not do.
+- After each item: `python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id <N> --evidence "<cmd -> exit N | commit <sha> | path/file.ext:LINE>"`, or `--run "<cmd>"` to run it and record `<cmd> -> exit N` (`--fail` records evidence but keeps the item open). The gate checks that a commit sha exists and that file:line exists and is in range; plain text is flagged unverified. Never edit the checklist by hand (step text, protected paths, acceptance commands are hashed; any change fails the gate); never mark an item you did not do.
 - Long output goes to the report, not the summary: `python3 $SKILL/scripts/write-report.py --task $TASK --dispatch $DISPATCH --report $REPORT --step <N> --run "<command>"` (or `--command "<cmd>" --exit-code <n> --notes "<text>"`; `--summary "<2 sentences>"` at the end).
 
 ## Completion (the ONLY path)
 
-- Finish by running the brief's `Finish ONLY:` line exactly (`bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --summary "<2 sentences>"`). It verifies checklist, report, protected paths and acceptance, then sends `worker_done`.
+- Finish by running the brief's `Finish ONLY:` line exactly (`bash $SKILL/scripts/orca-done.sh --from $W --task $TASK --dispatch $DISPATCH --checklist $CHECKLIST --report $REPORT --expect-spec-hash $SPEC_HASH --summary "<2 sentences>"`). It verifies the spec hash, checklist, evidence, report, protected paths and acceptance, then sends `worker_done`.
 - `GATE FAILED`: finish the missing items and rerun. Cannot finish: rerun with `--outcome failed --summary "<what is not done and why>"`.
 - A protected path (tests, fixtures, snapshots, CI) really must change: `ask` first; only after approval add `--allow-protected <path>`.
 - Never send a raw `worker_done`. Fallback only when `orca-done.sh` is missing in this terminal: `ask` first, and only if the coordinator replies to do so: `orca orchestration send --from $W --type worker_done --subject "<short status>" --body "DONE-WHEN: <N. done: <evidence> | N. skipped: <reason>, every item>; <2-sentence summary>" --task-id $TASK --dispatch-id $DISPATCH --outcome succeeded` (`failed` if any item is not done).

@@ -123,6 +123,8 @@ From then on, every implementation request goes through the dispatch loop: write
 | `skills/set-orchestrator/scripts/self-handle.sh` | Prints this session's Orca terminal handle. |
 | `skills/set-orchestrator/scripts/pane-roster.py` | Lists the terminals in a pane and marks which ones are eligible workers. Resolves a worker by tab title. |
 | `skills/set-orchestrator/scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
+| `skills/set-orchestrator/scripts/dispatch.sh` | One-line dispatch of a Task: checklist with a trusted specHash, worker contract, short brief, send, tab title, state entry. |
+| `skills/set-orchestrator/scripts/settle.sh` | Verifies a finished Task against the specHash stored in the state file and records the result. Run the frozen copy under `<state dir>/gate/<hash>/` that `dispatch.sh` prints, so a worker cannot edit the gate it is checked by. |
 
 State file: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<terminal-handle>.json`.
 
@@ -141,6 +143,12 @@ claude plugin eval . --runs 1 --ablation none
 ```
 
 The suite runs without Orca and without Bash, so it checks that the skill is selected and that the reply stays on the orchestrator role; it does not exercise dispatching.
+
+Regression tests for the checklist gate, `dispatch.sh` and `settle.sh` (no Orca needed; a fake CLI stands in):
+
+```bash
+python3 -m unittest discover -s skills/set-orchestrator/scripts/tests   # or: python3 -m pytest skills/set-orchestrator/scripts/tests -q
+```
 
 Scripts need bash and Python 3 (macOS and Linux). Windows is not supported.
 
