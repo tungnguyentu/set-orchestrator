@@ -6,7 +6,7 @@ Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Code
 
 ## Requirements
 
-- Claude Code 2.1 or newer, running inside an Orca terminal.
+- Claude Code 2.1 or newer, running inside an Orca terminal or an Orca chat tab. A chat tab has no `ORCA_TERMINAL_HANDLE`; the skill finds its own handle by printing a one-time marker and reading the pane's Claude screens through `orca terminal read`.
 - Orca 1.4.227 or newer, with the `orca` CLI on `PATH`. The skill uses `orca orchestration`, `orca terminal` and `orca status`.
 - Python 3 and bash for the helper scripts.
 - Optional: the agent CLIs you want the orchestrator to open for you (`claude`, `grok`, `codex`, `agy`).
