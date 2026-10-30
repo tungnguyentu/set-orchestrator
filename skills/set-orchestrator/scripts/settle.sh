@@ -25,7 +25,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ST="$HERE/orch_state.py"
-TASK=""; SELF="${ORCA_TERMINAL_HANDLE:-}"; STATE=""; RENAME=0; ACCEPT=1; REPORT_REQ=1; ORCA="${ORCA_CLI_COMMAND:-orca}"
+TASK=""; SELF="${ORCA_TERMINAL_HANDLE:-${ORCA_AGENT_SESSION_ID:+orca_session_id:$ORCA_AGENT_SESSION_ID}}"; STATE=""; RENAME=0; ACCEPT=1; REPORT_REQ=1; ORCA="${ORCA_CLI_COMMAND:-orca}"
 ALLOW=(); ALLOW_GATE=()
 ORIG_ARGS=("$@")
 die() { echo "settle.sh: $*" >&2; exit 2; }
@@ -47,7 +47,7 @@ done
 [ -n "$TASK" ] || die "--task is required"
 if [ -z "$STATE" ]; then
   [ -n "$SELF" ] || die "--from <self handle> or --state is required outside an Orca terminal"
-  STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/$SELF.json"
+  STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/${SELF//:/_}.json"  # chat addresses contain ":"
 fi
 [ -f "$STATE" ] || die "state file not found: $STATE"
 python3 "$ST" get "$STATE" "$TASK" >/dev/null || die "no dispatches[] entry for $TASK in $STATE"

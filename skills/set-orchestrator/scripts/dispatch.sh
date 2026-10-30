@@ -32,7 +32,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL="$(cd "$HERE/.." && pwd)"
 ST="$HERE/orch_state.py"
 TO=""; TITLE=""; SPEC_FILE=""; GOAL=""; CHANGE=""; OWN=""; OOS="see Task spec"; TASK=""; DEPS=""
-SELF="${ORCA_TERMINAL_HANDLE:-}"; FROM_GIVEN=0; STATE=""; PANE=""; AGENT=""; AGENT_TITLE=""
+SELF="${ORCA_TERMINAL_HANDLE:-${ORCA_AGENT_SESSION_ID:+orca_session_id:$ORCA_AGENT_SESSION_ID}}"; FROM_GIVEN=0; STATE=""; PANE=""; AGENT=""; AGENT_TITLE=""
 WAVE=1; ATTEMPT=1; FAMILY=""; ORCA=""; FORCE_CL=0; DRY=0; RESEND=0; ACCEPT_GATE=()
 ITEMS=(); PROT=(); ACC=()
 die() { echo "dispatch.sh: $*" >&2; exit 2; }
@@ -77,7 +77,7 @@ if [ -z "$ORCA" ]; then
 fi
 if [ -z "$STATE" ]; then
   [ -n "$SELF" ] || die "--from <self handle> or --state is required outside an Orca terminal"
-  STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/$SELF.json"
+  STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/${SELF//:/_}.json"  # chat addresses contain ":"
 fi
 [ -f "$STATE" ] || die "state file not found: $STATE (run '/set-orchestrator on' first)"
 STATE_DIR="$(cd "$(dirname "$STATE")" && pwd)"

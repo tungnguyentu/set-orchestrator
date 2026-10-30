@@ -1,7 +1,7 @@
 {
   "name": "set-orchestrator",
   "displayName": "Set Orchestrator",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Make a Claude Code session the standing orchestrator for the agents open in the same Orca pane: spec, dispatch, wait, verify, report",
   "author": { "name": "tungnguyentu" },
   "homepage": "https://github.com/tungnguyentu/set-orchestrator",

@@ -1,25 +1,38 @@
 #!/usr/bin/env bash
 # Print this session's own Orca terminal handle.
 #
-#   self-handle.sh                      -> $ORCA_TERMINAL_HANDLE (Orca terminal)
-#   self-handle.sh --from <handle>      -> that handle (user-supplied)
+#   self-handle.sh                      -> $ORCA_TERMINAL_HANDLE (Orca terminal), or
+#                                          orca_session_id:$ORCA_AGENT_SESSION_ID (Orca chat tab)
+#   self-handle.sh --from <handle>      -> that handle (user-supplied; ignored when the env identifies us)
 #   self-handle.sh --nonce              -> prints a one-time marker; step 1 of the probe
 #   self-handle.sh --probe <nonce> [--pane <path>] [--orca <exe>] [--json]
 #                                       -> step 2: the Orca chat/terminal whose screen shows <nonce>
 #
-# Orca's chat UI runs Claude without ORCA_TERMINAL_HANDLE, but the chat is still listed by
-# `terminal list` (title prefixed with ✳) and `terminal read` returns its screen. So a chat
-# session proves its own handle by printing a nonce in one Bash call (the command line and
-# its output appear on its screen) and, in the next Bash call, reading every Claude session
-# of the pane and keeping the one that shows the nonce.
+# Orca's chat UI (a "structured" session) has no terminal: it is not in `terminal list` and
+# `terminal send/read` cannot reach it. Orca injects ORCA_AGENT_SESSION_ID into its shell; the
+# orchestration CLI then acts as that session on its own, and the mailbox address is
+# orca_session_id:<id>. A chat can never be named from outside (`--from orca_session_id:...`
+# from another shell is refused: session_caller_chat_not_declarable), so only the env proves it.
+#
+# The nonce probe below is for a Claude TUI that runs in an Orca terminal whose shell lost
+# ORCA_TERMINAL_HANDLE: print a nonce in one Bash call (command line and output appear on the
+# screen), then in the next call read every Claude terminal of the pane and keep the one that
+# shows it.
 #
 # Exit codes: 0 handle printed; 2 no handle and no probe; 3 probe found no match (candidates on
 # stderr); 4 probe matched several sessions; 5 Orca CLI error.
 set -u
 
-if [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && [ "${1:-}" != "--probe" ] && [ "${1:-}" != "--nonce" ]; then
-  printf '%s\n' "$ORCA_TERMINAL_HANDLE"
-  exit 0
+if [ "${1:-}" != "--probe" ] && [ "${1:-}" != "--nonce" ]; then
+  if [ -n "${ORCA_TERMINAL_HANDLE:-}" ]; then
+    printf '%s\n' "$ORCA_TERMINAL_HANDLE"
+    exit 0
+  fi
+  if [ -n "${ORCA_AGENT_SESSION_ID:-}" ]; then
+    printf 'orca_session_id:%s\n' "$ORCA_AGENT_SESSION_ID"
+    echo "self-handle: Orca chat session. Orchestration commands already act as this session; pass this address or nothing as --from/--terminal, never another handle. terminal send/rename/read cannot target it." >&2
+    exit 0
+  fi
 fi
 
 MODE=""; NONCE=""; PANE=""; ORCA_EXE=""; JSON=0; FROM=""
@@ -50,8 +63,10 @@ fi
 
 if [ "$MODE" != probe ] || [ -z "$NONCE" ]; then
   cat >&2 <<'MSG'
-self-handle: ORCA_TERMINAL_HANDLE is empty, so this session is an Orca chat (or outside Orca).
-Prove the handle with the two-step probe (two separate Bash calls):
+self-handle: ORCA_TERMINAL_HANDLE and ORCA_AGENT_SESSION_ID are both empty. An Orca chat tab
+always has ORCA_AGENT_SESSION_ID (check `env | grep ORCA_`); without it this shell is outside
+Orca, or an Orca terminal whose shell lost its handle. For a Claude TUI in an Orca terminal,
+prove the handle with the two-step probe (two separate Bash calls):
   1. bash scripts/self-handle.sh --nonce              # prints ORCH-SELF-...
   2. bash scripts/self-handle.sh --probe ORCH-SELF-... --pane "$PWD"
 Or pass a handle the user gave you: --from term_...
