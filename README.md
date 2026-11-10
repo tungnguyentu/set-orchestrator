@@ -43,7 +43,7 @@ To update a clone, run `git -C ~/.claude/skills/set-orchestrator pull`.
 Open the agents you want as workers in the same Orca pane as the Claude session, or let the skill open them. Then, in that Claude session:
 
 ```text
-/set-orchestrator on ["<objective>"] [--open <agent>[:<count>],...] [--skills ak|ce|superpowers|none]
+/set-orchestrator on ["<objective>"] [--open <agent>[:<count>][@<model>[/<effort>]],...] [--skills ak|ce|superpowers|none]
 /set-orchestrator status
 /set-orchestrator off
 ```
@@ -87,6 +87,18 @@ You can also start it in words, in English or your own language: "set this sessi
 
 Opens agent terminals in the same pane, one per entry, each started with permission prompts disabled. Agents: `claude`, `grok`, `codex`, `agy` (Antigravity). `claude:2` opens two. Each new tab is named `<agent>-<n>`. Claude workers start with `cc-launch --dangerously-skip-permissions` when that wrapper exists, otherwise `claude --dangerously-skip-permissions`, and inherit the orchestrator's `CLAUDE_CONFIG_DIR`.
 
+Add `@<model>` and optionally `/<effort>` to pick what each worker runs on:
+
+```text
+/set-orchestrator on "Migrate the billing service" --open claude:2@sonnet,claude@opus/high,codex
+```
+
+Without `@<model>` the agent starts on its own default.
+
+### Model routing
+
+The orchestrator keeps the cost of a finished task low, not the price of a token. Each task gets a tier (`light`, `standard`, `heavy`, `frontier`) and goes to a worker of that tier. The checklist gate decides whether it passed. Only a failed task moves up: first to a higher effort on the same model, then to the next tier. Work is split across several workers only when it is large, the parts are independent, and each part has its own check. The final report lists tier, model, effort and attempts per task. Details: `skills/set-orchestrator/references/model-routing.md`.
+
 ### `--skills`: which workflow skills the workers use
 
 Every task brief tells the worker which skill to run first, so the worker follows a real workflow (plan, test, review) instead of editing files straight away. The skill family is detected from the orchestrator's config dir and can be forced with `--skills`:
@@ -119,6 +131,7 @@ From then on, every implementation request goes through the dispatch loop: write
 |------|---------|
 | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | Plugin manifest and the one-entry marketplace that points at this repository. |
 | `skills/set-orchestrator/SKILL.md` | The skill itself: role rules, `on`, `status`, `off`, the coordinator loop, fallbacks, pitfalls. |
+| `skills/set-orchestrator/references/model-routing.md` | Task tiers, the `--open` model syntax, the retry rung order, and what to measure. |
 | `skills/set-orchestrator/references/coordinator-loop.md` | The detailed loop, the worker brief template, and the error table. |
 | `skills/set-orchestrator/scripts/self-handle.sh` | Prints this session's Orca terminal handle. |
 | `skills/set-orchestrator/scripts/pane-roster.py` | Lists the terminals in a pane and marks which ones are eligible workers. Resolves a worker by tab title. |

@@ -44,6 +44,7 @@ You are an Orca worker. The coordinator cannot see this screen: a question or re
 - Unclear point or a decision the brief does not cover: `ask` and wait. Do not guess; do not open a local question dialog.
 - Edit only the brief's Ownership paths; Out of scope stays untouched. Never edit, skip, delete or weaken tests, fixtures, snapshots or CI config to make acceptance pass.
 - Git: commit unless the brief says no commit; never push or deploy; never `git add -A`; stay on the stated branch.
+- Subagents you start: set their model explicitly. Search and log reading go to a small model; keep decisions and edits yourself.
 - If the brief mentions Performance, record each of the five items (re-renders, bundle size, requests/caching, queries/N+1, assets) as ok, fixed or n/a in the report.
 
 ## Method

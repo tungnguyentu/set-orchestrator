@@ -40,7 +40,7 @@ A Claude Code worker that handles several Tasks in a row fills its context. Its 
 
 ## Failed Task retry
 
-`worker-start --retry-of` is not available on the compact path, so retry by creating a new Task: same title plus " (retry)", same `--deps`, spec prefixed with the failure reason from the `worker_done` body. Record `attempt: 2` on the state-file entry. One retry only; a second failure marks the Task stopped, dependents stay blocked, independent Tasks continue.
+`worker-start --retry-of` is not available on the compact path, so retry by creating a new Task: same title plus " (retry)", same `--deps`, spec prefixed with the failure reason from the `worker_done` body. Send the retry one rung up, never to the same model and effort: same model with a higher effort when such a worker is idle, otherwise the next tier (`model-routing.md`). Record `attempt: 2` on the state-file entry. One retry only; a second failure marks the Task stopped, dependents stay blocked, independent Tasks continue.
 
 ## Error codes seen
 
