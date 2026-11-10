@@ -13,9 +13,24 @@ Pick the lowest tier whose description fits the Task. `Tier` goes in the Task sp
 | `light` | Extraction, classification, log or file reading, search across many files, mechanical renames with a test that proves them | `haiku` | their small or fast model |
 | `standard` | Clearly specified change with exact acceptance commands; routine bug fix with a known cause; tests for existing code | `sonnet` | their default model |
 | `heavy` | Design decision inside the Task, debugging with an unknown cause, cross-module change, anything the user called risky | `opus` | their strongest model |
-| `frontier` | Large migration or a research-grade problem that `heavy` already failed, or the user asked for it | `fable` | none; ask the user |
+| `frontier` | Large migration or a research-grade problem that `heavy` already failed, or the user asked for it. Only with the user's yes for that Task (next section) | `fable` | none; ask the user |
 
 The orchestrator session itself plans, writes specs and verifies. That is `heavy` work; do not run the orchestrator on a `light` model.
+
+## Frontier needs the user's yes
+
+`fable` runs only after the user accepts it for that Task. This holds for every way a Task can reach it:
+
+- sending a Task to a worker that already runs `fable`, even when that worker is idle and nothing else is;
+- switching a worker to `fable` with `/model`;
+- a retry whose next rung is `frontier`;
+- a subagent model named in a spec or a brief.
+
+Ask once per Task, in one line: the Task, why `heavy` is not enough (or that `heavy` failed the gate, with the failing item), and the alternative if the user says no. Then wait. Other Tasks keep running while you wait.
+
+A yes covers that Task only, not later Tasks and not the rest of the Run, unless the user says so in plain words ("use fable for all of these"). Record the accepted Task in the state file and list it in the final report. On a no or no answer, stay on `heavy`: run the Task there, or stop a failed Task after its `heavy` attempt and report it.
+
+The user naming `fable` in their own request (`--open claude@fable`, "give this to fable") is the yes for the Tasks that request names. A worker the user opened on `fable` for one Task is not a yes for the next one: treat it as a `heavy` worker for routing and ask before sending it `frontier` work, or leave it idle when a cheaper worker fits.
 
 ## Opening workers with a model
 
@@ -36,7 +51,7 @@ Without `@model` the agent starts on its own default. That is fine for a first r
 3. Let the gate decide (`settle.sh`). A pass on the first attempt is the cheap path and the normal one.
 4. On a gate failure, the one retry goes up exactly one rung, in this order:
    - same model, higher effort, when a worker with that model and a higher effort is idle;
-   - otherwise the next tier's worker.
+   - otherwise the next tier's worker. When the next tier is `frontier`, ask the user first (section "Frontier needs the user's yes").
    Never retry on the same model and effort with the same spec: that buys the same failure twice. If no higher rung is open, tell the user what to open (for example `--open claude@opus/high`) and wait.
 5. A second failure stops the Task as before. Report it with both rungs tried.
 

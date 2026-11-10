@@ -97,7 +97,7 @@ Without `@<model>` the agent starts on its own default.
 
 ### Model routing
 
-The orchestrator keeps the cost of a finished task low, not the price of a token. Each task gets a tier (`light`, `standard`, `heavy`, `frontier`) and goes to a worker of that tier. The checklist gate decides whether it passed. Only a failed task moves up: first to a higher effort on the same model, then to the next tier. Work is split across several workers only when it is large, the parts are independent, and each part has its own check. The final report lists tier, model, effort and attempts per task. Details: `skills/set-orchestrator/references/model-routing.md`.
+The orchestrator keeps the cost of a finished task low, not the price of a token. Each task gets a tier (`light`, `standard`, `heavy`, `frontier`) and goes to a worker of that tier. The checklist gate decides whether it passed. Only a failed task moves up: first to a higher effort on the same model, then to the next tier. The `frontier` tier (`fable`) is never used without your yes for that task: the orchestrator asks first and stays on `heavy` if you decline. Work is split across several workers only when it is large, the parts are independent, and each part has its own check. The final report lists tier, model, effort and attempts per task. Details: `skills/set-orchestrator/references/model-routing.md`.
 
 ### `--skills`: which workflow skills the workers use
 
