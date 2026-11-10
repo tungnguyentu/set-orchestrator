@@ -34,7 +34,7 @@ Remaining debts: `ORCA orchestration worker-list --run <id> --terminal-state rec
 
 ## Reused worker context
 
-Every Claude worker gets `/autocompact 300k` once (step 9 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The contract's Context section tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak:handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
+Every Claude worker gets `/autocompact 300k` once (step 9 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The contract's Context section tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak-handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
 
 A Claude Code worker that handles several Tasks in a row fills its context. Its status line in `terminal read` shows `Context ██░░░░░░░░ NN%`. Rule: before a new brief to a settled, idle terminal with NN above 70, have the worker write its handoff, confirm the file, then send `/clear` and wait for `tui-idle`; then send the brief. The same order applies when you switch a worker's model for a Task's tier. A `/clear` without a fresh handoff file is not allowed (steps in `model-routing.md`, "Handoff, then clear"). Never `/clear` a terminal with an active Dispatch. For Codex, Grok or Gemini use their own reset command when known; otherwise skip and note it in the report.
 
@@ -136,12 +136,12 @@ Use after an implement Task with more than ~3 Done-when items, a change touching
 
 | Family | Method line | Context line |
 |--------|-------------|--------------|
-| `ak` (AgentKit) | Invoke the named skill as your first step and follow it to the end; it carries the user's rules (brainstorm gate, tests, review). Implementation: `/ak:cook "<task title>"`. Bug, failing test or CI error: `/ak:debug "<symptom>"` to prove the cause, then `/ak:fix`. Before worker_done: `/ak:code-review` on your diff and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first run `/ak:handoff "task $TASK" --output plans/handoffs/session-handoff-$W.md --force`, then `/compact`, then continue from that file. |
+| `ak` (AgentKit) | Invoke the named skill as your first step and follow it to the end; it carries the user's rules (brainstorm gate, tests, review). Implementation: `/ak-cook "<task title>"`. Bug, failing test or CI error: `/ak-debug "<symptom>"` to prove the cause, then `/ak-fix`. Before worker_done: `/ak-code-review` on your diff and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first run `/ak-handoff "task $TASK" --output plans/handoffs/session-handoff-$W.md --force`, then `/compact`, then continue from that file. |
 | `ce` (compound-engineering) | Invoke the named skill as your first step and follow it to the end. Implementation: `/ce-plan "<task title>: <one-line change>"` then `/ce-work <plan path it wrote>`; for a change under about 20 lines `/ce-work "<task title>"` directly. Bug, failing test or CI error: `/ce-debug "<symptom>"` then `/ce-work` on its fix. Before worker_done: `/ce-code-review` and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first run `/ce-handoff create "task $TASK"` and copy its output to plans/handoffs/session-handoff-$W.md, then `/compact`, then continue from that file. |
 | `superpowers` | Use the superpowers skills; the brief's TASK block and checklist are the approved design, so skip brainstorming. Implementation: `writing-plans` then `executing-plans`, with `test-driven-development` while coding. Bug, failing test or CI error: `systematic-debugging` first. Before worker_done: `requesting-code-review` and fix what it finds. | Your auto-compact window is 300k. When your status line shows Context at 70% or more, first write plans/handoffs/session-handoff-$W.md (task, what is done, what is next, open questions), then `/compact`, then continue from that file. |
 | `none` | Work directly: read the code around the target, make the change, run the brief's Acceptance command, and review your own diff before worker_done. | Same as `superpowers`. |
 
-A domain skill named in the spec (for example `/ak:frontend-development`, `/ce-test-browser`) goes into the brief's `Change:` line as "also load <skill> first".
+A domain skill named in the spec (for example `/ak-frontend-development`, `/ce-test-browser`) goes into the brief's `Change:` line as "also load <skill> first".
 
 On Linux pass `--orca <resolved executable>` (for example `orca-ide`) to `install-worker-contract.sh`.
 

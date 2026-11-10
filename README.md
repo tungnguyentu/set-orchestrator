@@ -10,7 +10,7 @@ Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Code
 - Orca 1.4.227 or newer, with the `orca` CLI on `PATH`. The skill uses `orca orchestration`, `orca terminal` and `orca status`.
 - Python 3 and bash for the helper scripts.
 - Optional: the agent CLIs you want the orchestrator to open for you (`claude`, `grok`, `codex`, `agy`).
-- Optional: one workflow skill family for the workers: AgentKit (`ak:*` skills), [compound-engineering](https://github.com/EveryInc/compound-engineering-plugin), or [superpowers](https://github.com/obra/superpowers). See `--skills` below. Without one, workers work directly.
+- Optional: one workflow skill family for the workers: AgentKit (`ak-*` skills), [compound-engineering](https://github.com/EveryInc/compound-engineering-plugin), or [superpowers](https://github.com/obra/superpowers). See `--skills` below. Without one, workers work directly.
 - Optional: a `cc-launch` wrapper at `~/.local/bin/cc-launch`. When present, Claude workers opened with `--open` use it. When absent, they start with plain `claude`.
 
 ## Install
@@ -77,7 +77,7 @@ A list becomes one task per item, dispatched in parallel to the idle workers (it
 5) Optimize images, fonts and scripts.
 ```
 
-Each line turns into a spec with its own target files, acceptance commands and skill (for example `/ak:frontend-development` for items 1, 2 and 5, `/ak:databases` for item 4); the orchestrator verifies each commit and sends one final report.
+Each line turns into a spec with its own target files, acceptance commands and skill (for example `/ak-frontend-development` for items 1, 2 and 5, `/ak-databases` for item 4); the orchestrator verifies each commit and sends one final report.
 
 Say `/set-orchestrator status` to see the Run, the workers, the active dispatches and who owes a decision. Say `/set-orchestrator off` to drop the role.
 
@@ -105,7 +105,7 @@ Every task brief tells the worker which skill to run first, so the worker follow
 
 | Family | Detected when | Implementation | Bug | Review before done | Install |
 |--------|---------------|----------------|-----|--------------------|---------|
-| `ak` | `skills/ak-cook` exists | `/ak:cook` | `/ak:debug` then `/ak:fix` | `/ak:code-review` | AgentKit (`ak:*` skills) |
+| `ak` | `skills/ak-cook` exists | `/ak-cook` | `/ak-debug` then `/ak-fix` | `/ak-code-review` | AgentKit (`ak-*` skills) |
 | `ce` | plugin `compound-engineering` is cached | `/ce-plan` then `/ce-work` | `/ce-debug` | `/ce-code-review` | `/plugin marketplace add EveryInc/compound-engineering-plugin` then `/plugin install compound-engineering` |
 | `superpowers` | plugin `superpowers` is cached | `writing-plans`, `executing-plans`, `test-driven-development` | `systematic-debugging` | `requesting-code-review` | `/plugin install superpowers@claude-plugins-official` |
 | `none` | nothing above | work directly, run the acceptance commands | same | review own diff | nothing |
