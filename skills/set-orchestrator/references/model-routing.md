@@ -32,7 +32,7 @@ Without `@model` the agent starts on its own default. That is fine for a first r
 ## Verify first, escalate after
 
 1. Write the Task with observable Done-when items and exact acceptance commands. A Task that cannot be checked cannot be routed cheaply.
-2. Send it to an idle worker of the Task's tier. If none is open, use the nearest tier that is open and say so in the report. Opening a new terminal still needs the user's request.
+2. Send it to an idle worker of the Task's tier. If none is idle, switch an idle Claude worker to that tier's model (next two sections). If no Claude worker can be switched, use the nearest tier that is idle and say so in the report. Opening a new terminal still needs the user's request.
 3. Let the gate decide (`settle.sh`). A pass on the first attempt is the cheap path and the normal one.
 4. On a gate failure, the one retry goes up exactly one rung, in this order:
    - same model, higher effort, when a worker with that model and a higher effort is idle;
@@ -46,7 +46,21 @@ Do not start a Task above its tier "to be safe". The retry is what protects the 
 
 Avoid it in the middle of a Task. A long session that changes model has to rebuild its prompt cache, and reasoning from the stronger model does not carry over cleanly to a weaker one.
 
-Change only at a Task boundary, on an idle Claude terminal whose Dispatch is settled: send `/clear`, wait for `tui-idle`, then `/model <name>` (and `/effort <level>`), wait again, and update `roster[]`. Other agents: open a new terminal with the model instead.
+Change only at a Task boundary, on an idle Claude terminal whose Dispatch is settled, and do it yourself when a Task's tier has no idle worker. Prefer the worker with the least context to lose, and one whose current model is nearest the target. Follow "Handoff, then clear" below, including its model step. Other agents cannot be switched in place: open a new terminal with the model instead, which needs the user's request.
+
+## Handoff, then clear
+
+A `/clear` throws away what the worker knows. Every `/clear` you send to a worker, for a model switch or for a full context, comes after a handoff that is on disk.
+
+1. The terminal is idle and its previous Dispatch is settled. Never do this to a worker with an active Dispatch.
+2. Ask for the handoff: `ORCA terminal send --terminal <h> --enter --text "Write your session handoff now to plans/handoffs/session-handoff-<handle>.md, as the Context section of .orca/worker-contract.md says, then stop."` The contract names the handoff skill for the pane's skill family, or says to write it by hand.
+3. `ORCA terminal wait --terminal <h> --for tui-idle --timeout-ms 300000`, then check that `<pane>/plans/handoffs/session-handoff-<handle>.md` exists and was modified after step 2 (`ls -l`).
+4. No fresh file: do not clear. Ask once more; if it still fails, leave that worker as it is, use another worker or the nearest tier, and tell the user.
+5. Send `/clear` and wait for `tui-idle`.
+6. Model switch only: send `/model <name>`, then `/effort <level>` when the tier needs it, wait for `tui-idle`, and write the new `model` and `effort` into the worker's `roster[]` entry.
+7. Send the brief. When the new Task continues that worker's earlier work, name the handoff file in the brief's `Change:` line so the worker reads it first.
+
+A model switch is recorded in the final report: worker, from, to, and the Task that needed it.
 
 ## One worker or several
 

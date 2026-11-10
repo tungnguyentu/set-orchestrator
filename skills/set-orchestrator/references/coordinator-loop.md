@@ -36,7 +36,7 @@ Remaining debts: `ORCA orchestration worker-list --run <id> --terminal-state rec
 
 Every Claude worker gets `/autocompact 300k` once (step 9 of `on`, or before its first brief when it joined later); handles are listed in the state file's `autocompact[]`. The contract's Context section tells it to write `plans/handoffs/session-handoff-<handle>.md` (with `ak:handoff`, `ce-handoff`, or by hand, per the skill family) before any `/compact`.
 
-A Claude Code worker that handles several Tasks in a row fills its context. Its status line in `terminal read` shows `Context ██░░░░░░░░ NN%`. Rule: before a new brief to a settled, idle terminal with NN above 70, send `/clear` and wait for `tui-idle`; then send the brief. Never `/clear` a terminal with an active Dispatch. For Codex, Grok or Gemini use their own reset command when known; otherwise skip and note it in the report.
+A Claude Code worker that handles several Tasks in a row fills its context. Its status line in `terminal read` shows `Context ██░░░░░░░░ NN%`. Rule: before a new brief to a settled, idle terminal with NN above 70, have the worker write its handoff, confirm the file, then send `/clear` and wait for `tui-idle`; then send the brief. The same order applies when you switch a worker's model for a Task's tier. A `/clear` without a fresh handoff file is not allowed (steps in `model-routing.md`, "Handoff, then clear"). Never `/clear` a terminal with an active Dispatch. For Codex, Grok or Gemini use their own reset command when known; otherwise skip and note it in the report.
 
 ## Failed Task retry
 
