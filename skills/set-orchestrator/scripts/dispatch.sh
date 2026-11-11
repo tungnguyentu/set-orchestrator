@@ -8,7 +8,8 @@
 #     [--out-of-scope "<short>"] [--item "<Done-when N>"]... [--task <existing task id>] \
 #     [--deps '<json array>'] [--from <self handle>] [--state <state file>] [--pane <path>] \
 #     [--agent <type>] [--agent-title <claude-1>] [--wave N] [--attempt N] \
-#     [--family ak|ce|superpowers|none] [--orca <exe>] [--force-checklist] [--resend] [--accept-gate-change] [--dry-run]
+#     [--family ak|ce|superpowers|none] [--orca <exe>] [--force-checklist] [--resend] [--accept-gate-change] [--dry-run] \
+#     [--tier light|standard|heavy|frontier] [--tier-override "<reason>"] [--frontier-accepted "<user's words>"]
 #
 # Steps: task-create (unless --task) -> init-checklist.py (specHash + coordinator-side spec copy
 # in <state dir>/specs/<task>.json) -> install-worker-contract.sh (no-op when current) ->
@@ -25,7 +26,19 @@
 # the entry records gate_hash and the output JSON prints the frozen settle.sh to use later. If the
 # skill's scripts changed since the last snapshot it stops with exit 4, unless
 # --accept-gate-change (only when you changed them yourself).
-# Exit: 0 dispatched and sent; 4 gate scripts changed (nothing created); 2 bad input; 3 already active (nothing sent); 1 an Orca step failed.
+# Tier guard (before anything is created): --tier is the Task's tier, chosen by the coordinator
+# (references/model-routing.md). The worker's tier comes from its roster[] model in the state file
+# (orch_state.py model-tier). A different tier exits 5 and lists the roster workers of the Task's
+# tier; --tier-override "<reason>" lets it through and stores the reason as tier_override. Without
+# --tier the dispatch proceeds with a warning. The entry records tier, model and effort.
+# Frontier guard: a Task is frontier when --tier frontier is given or the worker's model maps to
+# frontier (fable). It needs the user's acceptance for that Task, either a prior
+# "orch_state.py accept-frontier STATE TASK --quote ..." record (with --task) or
+# --frontier-accepted "<user's words>", stored once the Task id is known. Neither: exit 6.
+# --tier-override never bypasses it. A fable worker given a non-frontier Task needs only the
+# acceptance (no override). The entry records frontier_quote.
+# Exit: 0 dispatched and sent; 4 gate scripts changed (nothing created); 2 bad input; 3 already active (nothing sent); 1 an Orca step failed;
+# 5 Task tier differs from the worker's tier (nothing created); 6 frontier dispatch without the user's acceptance (nothing created).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +46,7 @@ SKILL="$(cd "$HERE/.." && pwd)"
 ST="$HERE/orch_state.py"
 TO=""; TITLE=""; SPEC_FILE=""; GOAL=""; CHANGE=""; OWN=""; OOS="see Task spec"; TASK=""; DEPS=""
 SELF="${ORCA_TERMINAL_HANDLE:-${ORCA_AGENT_SESSION_ID:+orca_session_id:$ORCA_AGENT_SESSION_ID}}"; FROM_GIVEN=0; STATE=""; PANE=""; AGENT=""; AGENT_TITLE=""
+TIER=""; TIER_OVERRIDE=""; FRONTIER_QUOTE=""; OVERRIDE_GIVEN=0; QUOTE_GIVEN=0
 WAVE=1; ATTEMPT=1; FAMILY=""; ORCA=""; FORCE_CL=0; DRY=0; RESEND=0; ACCEPT_GATE=()
 ITEMS=(); PROT=(); ACC=()
 die() { echo "dispatch.sh: $*" >&2; exit 2; }
@@ -63,7 +77,10 @@ while [ $# -gt 0 ]; do
     --resend) RESEND=1; shift ;;
     --accept-gate-change) ACCEPT_GATE=(--accept-gate-change); shift ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    --tier) TIER="${2:-}"; shift 2 ;;
+    --tier-override) TIER_OVERRIDE="${2:-}"; OVERRIDE_GIVEN=1; shift 2 ;;
+    --frontier-accepted) FRONTIER_QUOTE="${2:-}"; QUOTE_GIVEN=1; shift 2 ;;
+    -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
     *) die "unknown argument $1" ;;
   esac
 done
@@ -109,6 +126,37 @@ for r in json.load(open(sys.argv[1])).get("roster") or []:
     if r.get("handle")==sys.argv[2]: print(r.get("agent","")); break' "$STATE" "$TO" 2>/dev/null)"
 [ -n "$AGENT_TITLE" ] || AGENT_TITLE="$(python3 "$ST" roster-title "$STATE" "$TO" 2>/dev/null || true)"
 [ -n "$AGENT_TITLE" ] || AGENT_TITLE="${AGENT:-worker}"
+
+# ---- tier and frontier guards (nothing is created before this passes) ----
+case "$TIER" in ""|light|standard|heavy|frontier) ;; *) die "--tier must be light, standard, heavy or frontier (got '$TIER')" ;; esac
+[ "$OVERRIDE_GIVEN" = 0 ] || [ -n "$TIER_OVERRIDE" ] || die "--tier-override needs a non-empty reason"
+[ "$QUOTE_GIVEN" = 0 ] || [ -n "$FRONTIER_QUOTE" ] || die "--frontier-accepted needs the user's words (non-empty)"
+W_MODEL="$(python3 "$ST" worker-info "$STATE" "$TO" model 2>/dev/null || true)"
+W_EFFORT="$(python3 "$ST" worker-info "$STATE" "$TO" effort 2>/dev/null || true)"
+W_TIER="$(python3 "$ST" model-tier "$W_MODEL")"
+ACCEPTED_QUOTE="$FRONTIER_QUOTE"
+if [ -z "$ACCEPTED_QUOTE" ] && [ -n "$TASK" ]; then ACCEPTED_QUOTE="$(python3 "$ST" frontier-accepted "$STATE" "$TASK" quote 2>/dev/null || true)"; fi
+IS_FRONTIER=0; { [ "$TIER" = frontier ] || [ "$W_TIER" = frontier ]; } && IS_FRONTIER=1
+[ "$IS_FRONTIER" = 1 ] || ACCEPTED_QUOTE=""
+if [ "$IS_FRONTIER" = 1 ]; then
+  if [ -z "$ACCEPTED_QUOTE" ]; then
+    echo "dispatch.sh: frontier dispatch (Task tier '${TIER:-none}', worker $AGENT_TITLE on '${W_MODEL:-unknown}' = $W_TIER) needs the user's yes for this Task; nothing created. Ask the user, then pass --frontier-accepted \"<their words>\" (or run: orch_state.py accept-frontier $STATE <task id> --quote \"<their words>\" and pass --task). --tier-override does not bypass this." >&2
+    exit 6
+  fi
+fi
+if [ -z "$TIER" ]; then
+  echo "dispatch.sh: WARNING no --tier given; the Task's tier was not checked against the worker (${AGENT_TITLE} on '${W_MODEL:-unknown}' = $W_TIER)." >&2
+elif [ "$TIER" != "$W_TIER" ] && [ "$W_TIER" != frontier ]; then
+  if [ -n "$TIER_OVERRIDE" ]; then
+    echo "dispatch.sh: tier override accepted ($TIER Task on $W_TIER worker): $TIER_OVERRIDE" >&2
+  else
+    MATCHES="$(python3 "$ST" tier-workers "$STATE" "$TIER" | paste -sd ',' - | sed 's/,/, /g')"
+    echo "dispatch.sh: tier mismatch: Task tier '$TIER' but worker $AGENT_TITLE runs '${W_MODEL:-unknown}' (tier $W_TIER); nothing created. Roster workers of tier $TIER: ${MATCHES:-none}. Send it to one of them, switch a worker's model, or pass --tier-override \"<reason>\"." >&2
+    exit 5
+  fi
+else
+  TIER_OVERRIDE=""  # nothing to override: do not record a reason for a matching dispatch
+fi
 
 ITEM_ARGS=(); for it in "${ITEMS[@]}"; do ITEM_ARGS+=(--item "$it"); done
 
@@ -157,6 +205,9 @@ if [ -z "$TASK" ]; then
   out="$(orca_json orchestration task-create --spec "$(cat "$SPEC_FILE")" --task-title "$TITLE" ${DEP_ARGS[@]+"${DEP_ARGS[@]}"} ${FROM[@]+"${FROM[@]}"} --json)" || exit 1
   TASK="$(printf '%s' "$out" | python3 "$ST" extract-id task)" || { echo "dispatch.sh: no task id in task-create output: $out" >&2; exit 1; }
 fi
+if [ -n "$FRONTIER_QUOTE" ]; then
+  python3 "$ST" accept-frontier "$STATE" "$TASK" --quote "$FRONTIER_QUOTE" || { echo "dispatch.sh: could not record the frontier acceptance for $TASK" >&2; exit 1; }
+fi
 CHECKLIST="$PANE/.orca/tasks/$TASK/checklist.json"
 REPORT="$PANE/.orca/tasks/$TASK/report.json"
 SPEC_COPY="$STATE_DIR/specs/$TASK.json"
@@ -200,13 +251,19 @@ if [ -z "$DISPATCH" ]; then
     upsert "{\"task_id\": $(jstr "$TASK"), \"status\": \"dispatch_failed\", \"spec_hash\": $(jstr "$SPEC_HASH")}"; exit 1; }
   DISPATCH="$(printf '%s' "$out" | python3 "$ST" extract-id dispatch)" || { echo "dispatch.sh: no dispatch id in: $out" >&2; exit 1; }
 fi
-upsert "$(python3 - "$TASK" "$DISPATCH" "$TO" "$AGENT" "$WAVE" "$ATTEMPT" "$SPEC_HASH" "$CHECKLIST" "$REPORT" "$SPEC_COPY" "$PANE" "$AGENT_TITLE" "$(now)" "$GATE_HASH" <<'PY'
+upsert "$(python3 - "$TASK" "$DISPATCH" "$TO" "$AGENT" "$WAVE" "$ATTEMPT" "$SPEC_HASH" "$CHECKLIST" "$REPORT" "$SPEC_COPY" "$PANE" "$AGENT_TITLE" "$(now)" "$GATE_HASH" "$TIER" "$W_MODEL" "$W_EFFORT" "$TIER_OVERRIDE" "$ACCEPTED_QUOTE" <<'PY'
 import json, sys
-t, d, to, ag, wave, att, h, cl, rep, spec, pane, base, now, gate = sys.argv[1:15]
-print(json.dumps({"task_id": t, "dispatch_id": d, "terminal": to, "agent": ag, "wave": int(wave),
-                  "attempt": int(att), "status": "dispatched", "started": now, "settled": None,
-                  "spec_hash": h, "checklist": cl, "report": rep, "spec_path": spec, "pane": pane,
-                  "base_title": base, "gate_hash": gate}))
+t, d, to, ag, wave, att, h, cl, rep, spec, pane, base, now, gate, tier, model, effort, override, quote = sys.argv[1:20]
+entry = {"task_id": t, "dispatch_id": d, "terminal": to, "agent": ag, "wave": int(wave),
+         "attempt": int(att), "status": "dispatched", "started": now, "settled": None,
+         "spec_hash": h, "checklist": cl, "report": rep, "spec_path": spec, "pane": pane,
+         "base_title": base, "gate_hash": gate}
+# optional keys are written only when known, so a --resend without them keeps the earlier values
+for key, val in (("tier", tier), ("model", model), ("effort", effort), ("tier_override", override),
+                 ("frontier_quote", quote)):
+    if val:
+        entry[key] = val
+print(json.dumps(entry))
 PY
 )"
 

@@ -15,6 +15,14 @@ Pick the lowest tier whose description fits the Task. `Tier` goes in the Task sp
 | `heavy` | Design decision inside the Task, debugging with an unknown cause, cross-module change, anything the user called risky | `opus` | their strongest model |
 | `frontier` | Large migration or a research-grade problem that `heavy` already failed, or the user asked for it. Only with the user's yes for that Task (next section) | `fable` | none; ask the user |
 
+### Tier guard in `dispatch.sh`
+
+The tier is checked by code, not by memory. The state file's `roster[]` is the only source of a worker's model; `scripts/orch_state.py` maps it to a tier in one table (`orch_state.py model-tier <model>`): a name containing `haiku` is `light`, `sonnet` is `standard`, `opus` is `heavy`, `fable` is `frontier`; a missing, empty, `unknown` or unrecognized model (codex, grok and other agents) is `standard`. You choose the Task's tier; the script never classifies a Task.
+
+- `dispatch.sh --tier <tier>`: when the target worker's tier differs, it exits 5 before anything is created and prints the Task tier, the worker's title, model and tier, and the roster workers whose tier matches (idle or not; check idleness yourself). Send the Task to one of them, switch a worker (below), or pass `--tier-override "<reason>"`, which lets it through and stores the reason as `tier_override` in the Dispatch entry. Use the override only for the cases this file allows (for example the nearest idle tier for an agent that cannot be switched) and name it in the report.
+- Without `--tier` the dispatch still runs and prints a warning; always pass it.
+- The entry records `tier`, `model` and `effort`; they are read back for the final report (`orch_state.py get <state> <task> tier`).
+
 The orchestrator session itself plans, writes specs and verifies. That is `heavy` work; do not run the orchestrator on a `light` model.
 
 ## Frontier needs the user's yes
@@ -28,7 +36,9 @@ The orchestrator session itself plans, writes specs and verifies. That is `heavy
 
 Ask once per Task, in one line: the Task, why `heavy` is not enough (or that `heavy` failed the gate, with the failing item), and the alternative if the user says no. Then wait. Other Tasks keep running while you wait.
 
-A yes covers that Task only, not later Tasks and not the rest of the Run, unless the user says so in plain words ("use fable for all of these"). Record the accepted Task in the state file and list it in the final report. On a no or no answer, stay on `heavy`: run the Task there, or stop a failed Task after its `heavy` attempt and report it.
+A yes covers that Task only, not later Tasks and not the rest of the Run, unless the user says so in plain words ("use fable for all of these"). Record the acceptance with the user's own words: `python3 scripts/orch_state.py accept-frontier <state file> <task id> --quote "<the user's words>"` (an empty quote is refused), or, when the Task does not exist yet, pass `dispatch.sh --frontier-accepted "<the user's words>"`, which writes the same record once the Task id is known. The record is `frontier_accepted[<task id>] = {quote, at}` in the state file, the entry keeps it as `frontier_quote`, and the final report lists it.
+
+`dispatch.sh` enforces this. A Task counts as frontier when `--tier frontier` is given or the target worker's model maps to `frontier`; without an acceptance record for that Task (an `accept-frontier` record plus `--task <id>`, or `--frontier-accepted`) it exits 6 before the brief is sent and before the Task is created. `--tier-override` never bypasses it. A `fable` worker given a non-frontier Task is a tier mismatch and a frontier dispatch at once: the acceptance alone is enough, no override is needed. A `frontier` Task sent to a worker that is not on `fable` is still a tier mismatch and needs `--tier-override` as well as the acceptance. On a no or no answer, stay on `heavy`: run the Task there, or stop a failed Task after its `heavy` attempt and report it.
 
 The user naming `fable` in their own request (`--open claude@fable`, "give this to fable") is the yes for the Tasks that request names. A worker the user opened on `fable` for one Task is not a yes for the next one: treat it as a `heavy` worker for routing and ask before sending it `frontier` work, or leave it idle when a cheaper worker fits.
 
@@ -40,7 +50,7 @@ The user naming `fable` in their own request (`--open claude@fable`, "give this 
 --open claude:2@sonnet,claude@opus/high,codex,grok@grok-code/low
 ```
 
-`open-agents.sh` passes the model and effort to the agent's own flags and prints them in each JSON row. Store them in the state file's `roster[]` entry as `model` and `effort`. A terminal the user opened by hand has no row: read its status line with `terminal read`, or record `unknown` and treat it as `standard`.
+`open-agents.sh` passes the model and effort to the agent's own flags and prints them in each JSON row. Store them in the state file's `roster[]` entry as `model` and `effort`. A terminal the user opened by hand has no row: read its status line with `terminal read`, or record `unknown`; `dispatch.sh` treats an unknown model as `standard`.
 
 Without `@model` the agent starts on its own default. That is fine for a first run; say in the report which model each worker used.
 
@@ -95,4 +105,4 @@ A large context window is a limit, not a target. Keep briefs short, keep the `/c
 
 ## What to measure
 
-Per Task, in the state file and the final report: tier, worker model and effort, attempts, gate result. Per run: Tasks passed on the first attempt, Tasks that needed the retry rung, Tasks stopped. When first-attempt passes on a tier drop, raise that tier's default for this repository and tell the user; when they stay near total, try one tier lower on the next similar Task.
+Per Task, in the state file and the final report: tier, worker model and effort, any `tier_override` reason, any frontier quote, attempts, gate result. Per run: Tasks passed on the first attempt, Tasks that needed the retry rung, Tasks stopped. When first-attempt passes on a tier drop, raise that tier's default for this repository and tell the user; when they stay near total, try one tier lower on the next similar Task.

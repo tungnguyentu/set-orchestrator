@@ -5,6 +5,13 @@
   orch_state.py field STATE FIELD                print a top-level field (pane_path, skill_family, ...)
   orch_state.py roster-title STATE HANDLE        print roster[].title for a terminal handle
   orch_state.py upsert STATE JSON                merge JSON into dispatches[] entry with the same task_id
+  orch_state.py model-tier MODEL                 print the tier (light|standard|heavy|frontier) of a model name
+  orch_state.py worker-info STATE HANDLE FIELD   print a roster[] field (title, model, effort) or tier for a handle
+  orch_state.py tier-workers STATE TIER          print "title (model)" of each roster worker whose tier is TIER
+  orch_state.py accept-frontier STATE TASK --quote "<user's words>"
+                                                 record the user's yes for a frontier Task (frontier_accepted[TASK])
+  orch_state.py frontier-accepted STATE TASK [FIELD]
+                                                 print the acceptance record (JSON) or one field; exit 4 when none
   orch_state.py extract-id KIND < orca.json      print result.<KIND>.id (KIND = task | dispatch)
   orch_state.py parse-done-when SPEC_FILE        print the numbered Done-when items, one per line
   orch_state.py gate-snapshot STATE SCRIPTS_DIR [--accept-gate-change]
@@ -37,42 +44,68 @@ def find_entry(state, task_id):
     return None
 
 
-def upsert(path, patch):
+def locked_update(path, mutate):
+    """Load the state file under an exclusive lock, apply mutate(state), replace it atomically."""
     lock = open(path + ".lock", "w")
     try:
         if fcntl:
             fcntl.flock(lock, fcntl.LOCK_EX)
         state = load(path)
+        mutate(state)
+        tmp = f"{path}.tmp.{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, path)
+    finally:
+        lock.close()
+
+
+def upsert(path, patch):
+    def mutate(state):
         disp = state.setdefault("dispatches", [])
         cur = find_entry(state, patch["task_id"])
         if cur is None:
             disp.append(dict(patch))
         else:
             cur.update(patch)
-        tmp = f"{path}.tmp.{os.getpid()}"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        os.replace(tmp, path)
-    finally:
-        lock.close()
+    locked_update(path, mutate)
 
 
 def set_top(path, key, value):
     """Set one top-level state field under the same lock as upsert."""
-    lock = open(path + ".lock", "w")
-    try:
-        if fcntl:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-        state = load(path)
-        state[key] = value
-        tmp = f"{path}.tmp.{os.getpid()}"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        os.replace(tmp, path)
-    finally:
-        lock.close()
+    locked_update(path, lambda state: state.__setitem__(key, value))
+
+
+# ---- tiers and frontier acceptance -----------------------------------------------------------
+# Tier of a worker, from the model recorded in roster[]. Tier meanings and the routing rules are in
+# references/model-routing.md; keep this table in step with its "Tiers" table. First match wins.
+# A missing, empty, "unknown" or unrecognized model (other agents such as codex or grok) is
+# "standard".
+MODEL_TIERS = (("haiku", "light"), ("sonnet", "standard"), ("opus", "heavy"), ("fable", "frontier"))
+
+
+def model_tier(model):
+    m = (model or "").lower()
+    for needle, tier in MODEL_TIERS:
+        if needle in m:
+            return tier
+    return "standard"
+
+
+def roster_entry(state, handle):
+    for r in state.get("roster") or []:
+        if r.get("handle") == handle:
+            return r
+    return {}
+
+
+def accept_frontier(path, task_id, quote):
+    """Store the user's yes for one frontier Task: frontier_accepted[task_id] = {quote, at}."""
+    if not str(quote or "").strip():
+        raise ValueError("--quote must hold the user's words; an empty quote is not an acceptance")
+    rec = {"quote": quote, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    locked_update(path, lambda state: state.setdefault("frontier_accepted", {}).__setitem__(str(task_id), rec))
 
 
 # ---- gate snapshot ---------------------------------------------------------------------------
@@ -247,6 +280,32 @@ def main(argv):
             print("upsert: task_id required", file=sys.stderr)
             return 2
         upsert(argv[2], patch)
+        return 0
+    if cmd == "model-tier":
+        print(model_tier(argv[2] if len(argv) > 2 else ""))
+        return 0
+    if cmd == "worker-info":
+        r = roster_entry(load(argv[2]), argv[3])
+        print(model_tier(r.get("model")) if argv[4] == "tier" else r.get(argv[4]) or "")
+        return 0
+    if cmd == "tier-workers":
+        for r in load(argv[2]).get("roster") or []:
+            if model_tier(r.get("model")) == argv[3]:
+                print(f"{r.get('title') or r.get('handle')} ({r.get('model') or 'unknown'})")
+        return 0
+    if cmd == "accept-frontier":
+        i = argv.index("--quote") if "--quote" in argv else -1
+        try:
+            accept_frontier(argv[2], argv[3], argv[i + 1] if 0 <= i < len(argv) - 1 else "")
+        except ValueError as e:
+            print(f"accept-frontier: {e}", file=sys.stderr)
+            return 2
+        return 0
+    if cmd == "frontier-accepted":
+        rec = (load(argv[2]).get("frontier_accepted") or {}).get(str(argv[3]))
+        if not rec:
+            return 4
+        print(rec.get(argv[4], "") if len(argv) > 4 else json.dumps(rec, ensure_ascii=False))
         return 0
     if cmd == "extract-id":
         try:

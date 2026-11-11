@@ -339,7 +339,9 @@ esac
 """
 
 
-class TestDispatchSettle(Repo):
+class DispatchBase(Repo):
+    """Repo plus a state file, a fake Orca CLI and dispatch/settle helpers (no tests of its own)."""
+
     def setUp(self):
         super().setUp()
         self.state_dir = os.path.join(self.tmp, "cfg", "orchestrator")
@@ -371,6 +373,8 @@ class TestDispatchSettle(Repo):
     def entry(self):
         return rj(self.state)["dispatches"][0]
 
+
+class TestDispatchSettle(DispatchBase):
     def test_too_many_items_fails_before_orca(self):
         self.write_spec(9)
         r = self.dispatch()

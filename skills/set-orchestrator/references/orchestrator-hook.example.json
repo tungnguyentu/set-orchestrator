@@ -1,0 +1,17 @@
+{
+  "_comment": "OPTIONAL. Orchestrator session only (the Claude session that ran /set-orchestrator on). Merge ONLY the \"hooks\" object into that session's settings.json (e.g. $CLAUDE_CONFIG_DIR/settings.json) and replace <SKILL_DIR> with the absolute path of the set-orchestrator skill directory. Delete this _comment key when copying. After /compact or a resume, the hook prints a short reminder that this session is the orchestrator, but only while the Run's state file exists; with no state file it prints nothing. The matcher is a regex over the SessionStart source.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash <SKILL_DIR>/scripts/orchestrator-resume-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

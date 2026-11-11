@@ -85,7 +85,7 @@ You can also start it in words, in English or your own language: "set this sessi
 
 ### `--open`
 
-Opens agent terminals in the same pane, one per entry, each started with permission prompts disabled. Agents: `claude`, `grok`, `codex`, `agy` (Antigravity). `claude:2` opens two. Each new tab is named `<agent>-<n>`. Claude workers start with `cc-launch --dangerously-skip-permissions` when that wrapper exists, otherwise `claude --dangerously-skip-permissions`, and inherit the orchestrator's `CLAUDE_CONFIG_DIR`.
+Opens agent terminals in the same pane, one per entry, each started in a non-prompting permission mode. Agents: `claude`, `grok`, `codex`, `agy` (Antigravity). `claude:2` opens two. Each new tab is named `<agent>-<n>`. Claude workers start with `cc-launch --permission-mode auto` when that wrapper exists, otherwise `claude --permission-mode auto`, and inherit the orchestrator's `CLAUDE_CONFIG_DIR`.
 
 Add `@<model>` and optionally `/<effort>` to pick what each worker runs on:
 
@@ -97,7 +97,16 @@ Without `@<model>` the agent starts on its own default.
 
 ### Model routing
 
-The orchestrator keeps the cost of a finished task low, not the price of a token. Each task gets a tier (`light`, `standard`, `heavy`, `frontier`) and goes to a worker of that tier. The checklist gate decides whether it passed. Only a failed task moves up: first to a higher effort on the same model, then to the next tier. The `frontier` tier (`fable`) is never used without your yes for that task: the orchestrator asks first and stays on `heavy` if you decline. Work is split across several workers only when it is large, the parts are independent, and each part has its own check. The final report lists tier, model, effort and attempts per task. Details: `skills/set-orchestrator/references/model-routing.md`.
+The orchestrator keeps the cost of a finished task low, not the price of a token. Each task gets a tier (`light`, `standard`, `heavy`, `frontier`) and goes to a worker of that tier. The checklist gate decides whether it passed. Only a failed task moves up: first to a higher effort on the same model, then to the next tier. The `frontier` tier (`fable`) is never used without your yes for that task: the orchestrator asks first and stays on `heavy` if you decline. Work is split across several workers only when it is large, the parts are independent, and each part has its own check. The tier is enforced in code, not left to the model's memory:
+
+- `dispatch.sh --tier light|standard|heavy|frontier` compares the task's tier with the target worker's tier, which comes only from the worker's `model` in the state file's `roster[]` (`haiku` is `light`, `sonnet` `standard`, `opus` `heavy`, `fable` `frontier`; anything else, including codex and grok, is `standard`). A mismatch exits 5 before anything is created and lists the roster workers of the right tier. `--tier-override "<reason>"` lets it through and stores the reason. Without `--tier` the dispatch still runs, with a warning.
+- A `frontier` task, or any task sent to a `fable` worker, needs your yes for that task: `dispatch.sh --frontier-accepted "<your words>"` (or `orch_state.py accept-frontier <state> <task> --quote "<your words>"` first, then `--task`) stores the quote in the state file. Without it the dispatch exits 6. `--tier-override` does not bypass it.
+
+The final report lists tier, model, effort, any override reason, any frontier quote and attempts per task. Details: `skills/set-orchestrator/references/model-routing.md`.
+
+### Optional hook: keep the role after `/compact`
+
+After `/compact` or a resumed session the model can forget it is the orchestrator. `skills/set-orchestrator/scripts/orchestrator-resume-hook.sh` is a Claude Code `SessionStart` hook (matcher `compact|resume`) that, while the Run's state file exists, prints a short reminder: you are the orchestrator for Run X in pane Y, the state file path, how many dispatches are unsettled, do not edit code, run `/set-orchestrator status`. With no state file (after `off`), no handle, or any error it prints nothing and exits 0. It is not installed automatically: merge the `hooks` object of `skills/set-orchestrator/references/orchestrator-hook.example.json` into the orchestrator session's `settings.json` and replace `<SKILL_DIR>`.
 
 ### `--skills`: which workflow skills the workers use
 
@@ -116,7 +125,7 @@ Detection order is `ak`, `ce`, `superpowers`. Workers that run from another conf
 
 1. Confirms Orca is up and finds this session's own terminal handle and pane.
 2. Binds or creates an Orca orchestration Run with your objective.
-3. With `--open`, creates the requested terminals in the same pane (Claude `--dangerously-skip-permissions`, Grok `--permission-mode bypassPermissions`, Codex `--dangerously-bypass-approvals-and-sandbox`, Antigravity `--dangerously-skip-permissions`).
+3. With `--open`, creates the requested terminals in the same pane (Claude `--permission-mode auto`, Grok `--permission-mode bypassPermissions`, Codex `--dangerously-bypass-approvals-and-sandbox`, Antigravity `--dangerously-skip-permissions`).
 4. Lists the eligible workers in the pane, picks the skill family, and writes a state file so the role survives compaction or a new session.
 5. Sets a 300k auto-compact window on every Claude worker and on itself.
 6. Renames the tabs: the orchestrator becomes `orchestrator`, workers become `<agent>-<n>`. While a worker is busy, its tab shows the task title.
@@ -130,13 +139,17 @@ From then on, every implementation request goes through the dispatch loop: write
 | Path | Purpose |
 |------|---------|
 | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | Plugin manifest and the one-entry marketplace that points at this repository. |
-| `skills/set-orchestrator/SKILL.md` | The skill itself: role rules, `on`, `status`, `off`, the coordinator loop, fallbacks, pitfalls. |
-| `skills/set-orchestrator/references/model-routing.md` | Task tiers, the `--open` model syntax, the retry rung order, and what to measure. |
-| `skills/set-orchestrator/references/coordinator-loop.md` | The detailed loop, the worker brief template, and the error table. |
+| `skills/set-orchestrator/SKILL.md` | The skill itself, kept short: role rules, the subcommand table, the dispatch loop outline and a pointer to each reference. |
+| `skills/set-orchestrator/references/setup.md` | The full `on`, `status` and `off` procedures. |
+| `skills/set-orchestrator/references/fallbacks-and-pitfalls.md` | What to do when a worker never sends `worker_done`, and Orca pitfalls. |
+| `skills/set-orchestrator/references/model-routing.md` | Task tiers, the tier guard and frontier acceptance, the `--open` model syntax, the retry rung order, and what to measure. |
+| `skills/set-orchestrator/references/coordinator-loop.md` | The detailed loop, the anti-skip rules, the state file keys, the worker brief template, and the error table. |
 | `skills/set-orchestrator/scripts/self-handle.sh` | Prints this session's Orca terminal handle. |
 | `skills/set-orchestrator/scripts/pane-roster.py` | Lists the terminals in a pane and marks which ones are eligible workers. Resolves a worker by tab title. |
 | `skills/set-orchestrator/scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
-| `skills/set-orchestrator/scripts/dispatch.sh` | One-line dispatch of a Task: checklist with a trusted specHash, worker contract, short brief, send, tab title, state entry. |
+| `skills/set-orchestrator/scripts/dispatch.sh` | One-line dispatch of a Task: tier and frontier guards (`--tier`, `--tier-override`, `--frontier-accepted`; exit 5 and 6), checklist with a trusted specHash, worker contract, short brief, send, tab title, state entry. |
+| `skills/set-orchestrator/scripts/orch_state.py` | State file helpers: entries, the gate snapshot, the model-to-tier table, `accept-frontier`. |
+| `skills/set-orchestrator/scripts/orchestrator-resume-hook.sh`, `references/orchestrator-hook.example.json` | Optional `SessionStart` hook that restores the orchestrator role after `/compact` or a resume. |
 | `skills/set-orchestrator/scripts/settle.sh` | Verifies a finished Task against the specHash stored in the state file and records the result. Run the frozen copy under `<state dir>/gate/<hash>/` that `dispatch.sh` prints, so a worker cannot edit the gate it is checked by. |
 
 State file: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<terminal-handle>.json`.
@@ -169,7 +182,7 @@ Scripts need bash and Python 3 (macOS and Linux). Windows is not supported.
 
 - The orchestrator only sends work to terminals whose worktree path equals its own pane. Orca does not enforce this, the skill does.
 - It never sends to a busy terminal, never opens a terminal unless you ask, and never runs `orca orchestration reset`.
-- Agents opened with `--open` run with permission prompts disabled. Use this only in a checkout you are willing to let an agent change without confirmation.
+- Agents opened with `--open` run in auto or bypass permission modes (Claude `--permission-mode auto`, the others bypass prompts). Use this only in a checkout you are willing to let an agent change without confirmation.
 - Workers are told to commit but never push or deploy.
 
 ## License
