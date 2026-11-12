@@ -235,8 +235,24 @@ class TestResumeHook(unittest.TestCase):
         for want in ("ORCHESTRATOR", "run_42", "/work/pane", path, "not yet settled: 2", "/set-orchestrator status",
                      "Do not edit code"):
             self.assertIn(want, out)
-        self.assertLess(len(out), 600)
+        self.assertLess(len(out.splitlines()[0]), 600)
         self.assertNotIn("do-not-print", out)
+        self.assertIn("- t1 on", out)
+        self.assertNotIn("- t2 on", out)  # settled
+
+    def test_reminder_lists_the_workers(self):
+        self.state(roster=[{"handle": "term_w1", "title": "claude-1", "agent": "claude", "model": "sonnet",
+                            "effort": "unknown"},
+                           {"handle": "term_w2", "title": "agy-2", "agent": "antigravity", "model": "unknown"}],
+                   dispatches=[{"task_id": "t9", "status": "active", "base_title": "claude-1", "tier": "standard"}])
+        out = self.run_hook()
+        for want in ("Your workers in this pane (2)", "- claude-1 (claude, sonnet): term_w1",
+                     "- agy-2 (antigravity, model unknown): term_w2", "- t9 on claude-1 (tier standard)"):
+            self.assertIn(want, out)
+
+    def test_no_roster_and_no_open_dispatch_is_one_line(self):
+        self.state(dispatches=[{"task_id": "t2", "status": "settled"}])
+        self.assertEqual(len(self.run_hook().strip().splitlines()), 1)
 
     def test_chat_session_address_maps_to_file_name(self):
         self.state("orca_session_id_abc.json")
@@ -268,8 +284,8 @@ class TestResumeHook(unittest.TestCase):
     def test_long_and_multiline_values_stay_short(self):
         self.state(pane_path="/p\nINJECT " + "x" * 5000)
         out = self.run_hook()
-        self.assertLess(len(out), 800)
-        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertLess(len(out), 1200)
+        self.assertFalse([ln for ln in out.splitlines() if ln.startswith("INJECT")])
 
 
 if __name__ == "__main__":

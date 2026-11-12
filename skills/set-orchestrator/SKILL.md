@@ -13,7 +13,7 @@ Resolve the executable in this order: `$ORCA_CLI_COMMAND` when set (Orca exports
 
 State file: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<self-handle>.json` (`:` in a chat address becomes `_`), holding `{run_id, self_handle, pane_path, roster[], opened[], autocompact[], skill_family, started, objective, gate, dispatches[], frontier_accepted}`. Each `roster[]` entry carries `handle, title, agent` and `model`/`effort` when known; each `dispatches[]` entry (task, dispatch, terminal, status, attempt, `spec_hash`, `gate_hash`, `tier`, `model`, `effort`, `tier_override`, `frontier_quote`, verify result) is written by `dispatch.sh` and `settle.sh` under a lock. It lives outside the worktree, so workers cannot rewrite it, and it is how the role survives compaction or a new session. Field detail: `references/coordinator-loop.md`, "State file". `off` deletes the file, which is what closes the Run for the optional hook below.
 
-Role restore after `/compact` or a resume: the optional SessionStart hook `scripts/orchestrator-resume-hook.sh` (`references/orchestrator-hook.example.json`) prints a reminder while the state file exists. Without it, run `status` yourself when you notice you have lost the role.
+Role restore after `/compact` or a resume: the optional SessionStart hook `scripts/orchestrator-resume-hook.sh` (`references/orchestrator-hook.example.json`) prints the role, the Run, the workers of `roster[]` with their handles and models, and the open dispatches while the state file exists. `on` tells the user when it is not installed. Without it, run `status` yourself when you notice you have lost the role.
 
 ## Role rules while active
 
