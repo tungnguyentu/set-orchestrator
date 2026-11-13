@@ -104,6 +104,14 @@ The orchestrator keeps the cost of a finished task low, not the price of a token
 
 The final report lists tier, model, effort, any override reason, any frontier quote and attempts per task. Details: `skills/set-orchestrator/references/model-routing.md`.
 
+### Fresh context and one open dispatch per terminal
+
+Workers get worse as their context fills, and a Task is cheap next to a worker that has taken dozens of them on one context (many auto-compacts, briefs arriving at 150k to 265k tokens). Both rules are enforced by `dispatch.sh`, not left to the model's memory:
+
+- One open dispatch per terminal. While a terminal has another Task in status `dispatched` or `active`, `dispatch.sh` exits 7 and creates nothing; it lists the open Tasks. Settle each with the frozen `settle.sh`, or mark it with `python3 skills/set-orchestrator/scripts/orch_state.py abandon <state file> --reason "<why>" (--task <id> | --terminal <handle> | --all)` (status `abandoned`; only entries that are `dispatched` or `active` change; no Orca call). There is no override flag.
+- A fresh context every 3 Tasks. A Claude worker that already took 3 Tasks since its last reset is refused with exit 8. Run `bash skills/set-orchestrator/scripts/fresh-worker.sh --terminal <handle>`: the worker writes `plans/handoffs/session-handoff-<handle>.md`, the script checks that the file is new, sends `/clear` and records the reset in the state file (`context_resets`). It never clears without that file (exit 5). A Task that continues the previous one can pass with `--keep-context "<reason>"`; the reason is stored and reported. The limit is `--max-per-context N` or the environment variable `ORCH_MAX_TASKS_PER_CONTEXT` (the flag wins). Codex, Grok and Antigravity workers are not checked. Every fresh context costs one handoff, so group related work into one Task rather than many small ones.
+- `fresh-worker.sh --model <name> [--effort <level>]` also switches the worker's model after the `/clear` and updates its `roster[]` entry.
+
 ### Optional hook: keep the role after `/compact`
 
 After `/compact` or a resumed session the model can forget it is the orchestrator. `skills/set-orchestrator/scripts/orchestrator-resume-hook.sh` is a Claude Code `SessionStart` hook (matcher `compact|resume`) that, while the Run's state file exists, prints a short reminder: you are the orchestrator for Run X in pane Y, the state file path, how many dispatches are unsettled, do not edit code, run `/set-orchestrator status`. With no state file (after `off`), no handle, or any error it prints nothing and exits 0. It is not installed automatically: merge the `hooks` object of `skills/set-orchestrator/references/orchestrator-hook.example.json` into the orchestrator session's `settings.json` and replace `<SKILL_DIR>`.
@@ -147,8 +155,9 @@ From then on, every implementation request goes through the dispatch loop: write
 | `skills/set-orchestrator/scripts/self-handle.sh` | Prints this session's Orca terminal handle. |
 | `skills/set-orchestrator/scripts/pane-roster.py` | Lists the terminals in a pane and marks which ones are eligible workers. Resolves a worker by tab title. |
 | `skills/set-orchestrator/scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
-| `skills/set-orchestrator/scripts/dispatch.sh` | One-line dispatch of a Task: tier and frontier guards (`--tier`, `--tier-override`, `--frontier-accepted`; exit 5 and 6), checklist with a trusted specHash, worker contract, short brief, send, tab title, state entry. |
-| `skills/set-orchestrator/scripts/orch_state.py` | State file helpers: entries, the gate snapshot, the model-to-tier table, `accept-frontier`. |
+| `skills/set-orchestrator/scripts/dispatch.sh` | One-line dispatch of a Task: open-dispatch guard (exit 7), context guard (`--max-per-context`, `--keep-context`; exit 8), tier and frontier guards (`--tier`, `--tier-override`, `--frontier-accepted`; exit 5 and 6), checklist with a trusted specHash, worker contract, short brief, send, tab title, state entry. |
+| `skills/set-orchestrator/scripts/orch_state.py` | State file helpers: entries, the gate snapshot, the model-to-tier table, `accept-frontier`, `abandon`, `tasks-since-reset`, `context-reset`, `roster-set`. |
+| `skills/set-orchestrator/scripts/fresh-worker.sh` | Gives an idle Claude worker a fresh context: handoff file first, then `/clear`, optionally a new model and effort; records `context_resets`. Not part of the frozen gate set. |
 | `skills/set-orchestrator/scripts/orchestrator-resume-hook.sh`, `references/orchestrator-hook.example.json` | Optional `SessionStart` hook that restores the orchestrator role after `/compact` or a resume. |
 | `skills/set-orchestrator/scripts/settle.sh` | Verifies a finished Task against the specHash stored in the state file and records the result. Run the frozen copy under `<state dir>/gate/<hash>/` that `dispatch.sh` prints, so a worker cannot edit the gate it is checked by. |
 

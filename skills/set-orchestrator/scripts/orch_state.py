@@ -12,7 +12,22 @@
                                                  record the user's yes for a frontier Task (frontier_accepted[TASK])
   orch_state.py frontier-accepted STATE TASK [FIELD]
                                                  print the acceptance record (JSON) or one field; exit 4 when none
-  orch_state.py extract-id KIND < orca.json      print result.<KIND>.id (KIND = task | dispatch)
+  orch_state.py open-dispatches STATE HANDLE [--exclude TASK]
+                                                 print one line per dispatch of the terminal still dispatched or
+                                                 active (other than TASK); nothing when there is none
+  orch_state.py abandon STATE --reason "<why>" (--task TASK | --terminal HANDLE | --all)
+                                                 mark matching dispatched/active entries abandoned (abandoned_at,
+                                                 abandon_reason); prints {"abandoned": N, "tasks": [...]}; exit 2 on
+                                                 an empty reason or not exactly one selector. Never calls Orca and
+                                                 never touches an entry in any other status
+  orch_state.py tasks-since-reset STATE HANDLE [--exclude TASK]
+                                                 print how many dispatches the terminal started after its
+                                                 context_resets time (all when none), failed sends not counted
+  orch_state.py context-reset STATE HANDLE [--handoff PATH]
+                                                 record context_resets[HANDLE] = {at, handoff}
+  orch_state.py roster-set STATE HANDLE --model M [--effort E]
+                                                 write the worker's new model (and effort) into its roster[] entry
+  orch_state.py extract-id KIND < orca.json     print result.<KIND>.id (KIND = task | dispatch)
   orch_state.py parse-done-when SPEC_FILE        print the numbered Done-when items, one per line
   orch_state.py gate-snapshot STATE SCRIPTS_DIR [--accept-gate-change]
                                                  freeze the gate scripts into <state dir>/gate/<hash>/
@@ -24,7 +39,7 @@ The state file is ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<self>.json (
 worktree, so workers do not write it). Updates take an exclusive lock and replace atomically,
 so parallel dispatch.sh calls in one wave do not lose entries.
 """
-import hashlib, json, os, re, shutil, sys, time
+import datetime, hashlib, json, os, re, shutil, sys, time
 
 try:
     import fcntl
@@ -106,6 +121,106 @@ def accept_frontier(path, task_id, quote):
         raise ValueError("--quote must hold the user's words; an empty quote is not an acceptance")
     rec = {"quote": quote, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     locked_update(path, lambda state: state.setdefault("frontier_accepted", {}).__setitem__(str(task_id), rec))
+
+
+# ---- open dispatches, abandon, context resets -------------------------------------------------
+OPEN_STATUSES = ("dispatched", "active")
+NOT_STARTED_STATUSES = ("dispatch_failed", "send_failed")  # the brief never reached the worker
+
+
+def now_ts():
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def parse_ts(value):
+    """Parse a timestamp of the state file into an aware datetime, or None.
+
+    Both "+0700" and "+07:00" offsets occur in real state files; "Z" and fractional seconds are
+    tolerated, a timestamp without an offset is read as local time."""
+    s = str(value or "").strip()
+    if not s:
+        return None
+    s = re.sub(r"Z$", "+0000", s)
+    s = re.sub(r"([+-]\d\d):(\d\d)$", r"\1\2", s)
+    s = re.sub(r"(\d\d:\d\d:\d\d)\.\d+", r"\1", s)
+    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S%z", "%Y-%m-%d %H:%M:%S"):
+        try:
+            t = datetime.datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+        return t if t.tzinfo else t.astimezone()
+    return None
+
+
+def open_dispatches(state, handle, exclude=None):
+    """Entries of the terminal that still await settlement, other than the Task `exclude`."""
+    return [d for d in state.get("dispatches") or []
+            if d.get("terminal") == handle and d.get("status") in OPEN_STATUSES
+            and (exclude is None or str(d.get("task_id")) != str(exclude))]
+
+
+def abandon(path, reason, task=None, terminal=None, every=False):
+    """Mark open entries (dispatched or active) matching the selector as abandoned; return their Task ids."""
+    if not str(reason or "").strip():
+        raise ValueError("--reason must say why; an empty reason is not accepted")
+    if sum((task is not None, terminal is not None, bool(every))) != 1:
+        raise ValueError("give exactly one of --task, --terminal, --all")
+    hit = []
+
+    def mutate(state):
+        for d in state.get("dispatches") or []:
+            if d.get("status") not in OPEN_STATUSES:
+                continue
+            if task is not None and str(d.get("task_id")) != str(task):
+                continue
+            if terminal is not None and d.get("terminal") != terminal:
+                continue
+            d.update({"status": "abandoned", "abandoned_at": now_ts(), "abandon_reason": reason})
+            hit.append(d.get("task_id"))
+    locked_update(path, mutate)
+    return hit
+
+
+def tasks_since_reset(state, handle, exclude=None):
+    """Number of dispatches that reached (or may have reached) the terminal since its last context reset.
+
+    Entries whose brief was never sent are not counted. After a reset only entries that provably
+    started later are counted (the times are compared as times, not strings)."""
+    rec = (state.get("context_resets") or {}).get(handle) or {}
+    reset = parse_ts(rec.get("at"))
+    n = 0
+    for d in state.get("dispatches") or []:
+        if d.get("terminal") != handle or d.get("status") in NOT_STARTED_STATUSES:
+            continue
+        if exclude is not None and str(d.get("task_id")) == str(exclude):
+            continue
+        if reset is not None:
+            t = parse_ts(d.get("started"))
+            if t is None or t <= reset:
+                continue
+        n += 1
+    return n
+
+
+def context_reset(path, handle, handoff=None):
+    """Record that the worker's context was cleared now: context_resets[handle] = {at, handoff}."""
+    rec = {"at": now_ts(), "handoff": handoff or None}
+    locked_update(path, lambda state: state.setdefault("context_resets", {}).__setitem__(handle, rec))
+
+
+def roster_set(path, handle, model, effort=None):
+    """Write the model (and effort) a worker now runs on into its roster[] entry."""
+    found = []
+
+    def mutate(state):
+        r = roster_entry(state, handle)
+        if r:
+            r["model"] = model
+            if effort:
+                r["effort"] = effort
+            found.append(True)
+    locked_update(path, mutate)
+    return bool(found)
 
 
 # ---- gate snapshot ---------------------------------------------------------------------------
@@ -306,6 +421,46 @@ def main(argv):
         if not rec:
             return 4
         print(rec.get(argv[4], "") if len(argv) > 4 else json.dumps(rec, ensure_ascii=False))
+        return 0
+    if cmd == "open-dispatches":
+        ex = argv[argv.index("--exclude") + 1] if "--exclude" in argv[4:] else None
+        for d in open_dispatches(load(argv[2]), argv[3], ex):
+            print(f"{d.get('task_id')} ({d.get('title') or 'no title yet'}), status {d.get('status')}, "
+                  f"started {d.get('started') or 'unknown'}")
+        return 0
+    if cmd == "abandon":
+        opts = {"--reason": None, "--task": None, "--terminal": None}
+        for k in opts:
+            if k in argv[3:]:
+                i = argv.index(k, 3)
+                opts[k] = argv[i + 1] if i + 1 < len(argv) else ""
+        try:
+            hit = abandon(argv[2], opts["--reason"], opts["--task"], opts["--terminal"], "--all" in argv[3:])
+        except ValueError as e:
+            print(f"abandon: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps({"abandoned": len(hit), "tasks": hit}))
+        return 0
+    if cmd == "tasks-since-reset":
+        ex = argv[argv.index("--exclude") + 1] if "--exclude" in argv[4:] else None
+        print(tasks_since_reset(load(argv[2]), argv[3], ex))
+        return 0
+    if cmd == "context-reset":
+        i = argv.index("--handoff") if "--handoff" in argv[4:] else -1
+        context_reset(argv[2], argv[3], argv[i + 1] if 0 <= i < len(argv) - 1 else None)
+        return 0
+    if cmd == "roster-set":
+        opts = {"--model": "", "--effort": ""}
+        for k in opts:
+            if k in argv[4:]:
+                i = argv.index(k, 4)
+                opts[k] = argv[i + 1] if i + 1 < len(argv) else ""
+        if not opts["--model"]:
+            print("roster-set: --model is required", file=sys.stderr)
+            return 2
+        if not roster_set(argv[2], argv[3], opts["--model"], opts["--effort"]):
+            print(f"roster-set: no roster entry for {argv[3]}", file=sys.stderr)
+            return 3
         return 0
     if cmd == "extract-id":
         try:

@@ -331,9 +331,20 @@ class TestEvidence(Repo):
 
 FAKE_ORCA = """#!/usr/bin/env bash
 echo "$*" >> "$FAKE_ORCA_LOG"
+count() { grep -c "^$1" "$FAKE_ORCA_LOG"; }
 case "$1 $2" in
-  "orchestration task-create") echo '{"ok":true,"result":{"task":{"id":"task_fake01","status":"pending"}}}' ;;
-  "orchestration dispatch") echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fake01"}}}' ;;
+  "orchestration task-create") printf '{"ok":true,"result":{"task":{"id":"task_fake%02d","status":"pending"}}}\\n' "$(count 'orchestration task-create')" ;;
+  "orchestration dispatch") printf '{"ok":true,"result":{"dispatch":{"id":"ctx_fake%02d"}}}\\n' "$(count 'orchestration dispatch')" ;;
+  "terminal wait")
+    # FAKE_ORCA_BUSY: the terminal never reaches tui-idle
+    if [ -n "${FAKE_ORCA_BUSY:-}" ]; then echo '{"ok":false,"error":{"code":"timeout"}}'; exit 1; fi
+    echo '{"ok":true,"result":{}}' ;;
+  "terminal send")
+    # FAKE_HANDOFF_FILE: a worker that writes its handoff when asked for it
+    if [ -n "${FAKE_HANDOFF_FILE:-}" ] && [[ "$*" == *"session handoff"* ]]; then
+      mkdir -p "$(dirname "$FAKE_HANDOFF_FILE")"; echo handoff > "$FAKE_HANDOFF_FILE"
+    fi
+    echo '{"ok":true,"result":{}}' ;;
   *) echo '{"ok":true,"result":{}}' ;;
 esac
 """

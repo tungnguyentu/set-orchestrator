@@ -71,11 +71,13 @@ Do not start a Task above its tier "to be safe". The retry is what protects the 
 
 Avoid it in the middle of a Task. A long session that changes model has to rebuild its prompt cache, and reasoning from the stronger model does not carry over cleanly to a weaker one.
 
-Change only at a Task boundary, on an idle Claude terminal whose Dispatch is settled, and do it yourself when a Task's tier has no idle worker. Prefer the worker with the least context to lose, and one whose current model is nearest the target. Follow "Handoff, then clear" below, including its model step. Other agents cannot be switched in place: open a new terminal with the model instead, which needs the user's request.
+Change only at a Task boundary, on an idle Claude terminal whose Dispatch is settled, and do it yourself when a Task's tier has no idle worker. Prefer the worker with the least context to lose, and one whose current model is nearest the target. Run `bash scripts/fresh-worker.sh --terminal <h> --model <name> [--effort <level>]` ("Handoff, then clear" below): it does the handoff, the `/clear`, the `/model` and `/effort` sends and the roster update in one go. Other agents cannot be switched in place: open a new terminal with the model instead, which needs the user's request.
 
 ## Handoff, then clear
 
 A `/clear` throws away what the worker knows. Every `/clear` you send to a worker, for a model switch or for a full context, comes after a handoff that is on disk.
+
+Run it with `bash scripts/fresh-worker.sh --terminal <h> [--model <name> [--effort <level>]] [--state <file>] [--pane <path>] [--timeout-ms N] [--dry-run]`. It does the steps below and nothing else: it exits 3 (nothing sent) while the terminal has an open Dispatch, 4 when it is not idle, 5 when no fresh handoff file appears after two requests (it never sends `/clear` then); after the `/clear` it records `context_resets[<handle>] = {at, handoff}` in the state file and prints one JSON line `{ok, terminal, handoff, model, effort}`. `dispatch.sh` counts Tasks per terminal since that record: a Claude worker that already took 3 (limit set by `--max-per-context N` or `ORCH_MAX_TASKS_PER_CONTEXT`) is refused with exit 8 until this script has run, and `--keep-context "<reason>"` lets a Task that continues the previous one through. Codex, Grok and Antigravity workers are not counted and have no `/clear` here. The manual steps:
 
 1. The terminal is idle and its previous Dispatch is settled. Never do this to a worker with an active Dispatch.
 2. Ask for the handoff: `ORCA terminal send --terminal <h> --enter --text "Write your session handoff now to plans/handoffs/session-handoff-<handle>.md, as the Context section of .orca/worker-contract.md says, then stop."` The contract names the handoff skill for the pane's skill family, or says to write it by hand.
@@ -86,6 +88,8 @@ A `/clear` throws away what the worker knows. Every `/clear` you send to a worke
 7. Send the brief. When the new Task continues that worker's earlier work, name the handoff file in the brief's `Change:` line so the worker reads it first.
 
 A model switch is recorded in the final report: worker, from, to, and the Task that needed it.
+
+Why the limit: a worker's answers get worse as its context fills, and a measured Run showed workers that took dozens of Tasks on one context (many auto-compacts, briefs arriving at 150k to 265k tokens). A fresh context costs one handoff per three Tasks, which is cheaper than a bloated one.
 
 ## One worker or several
 
@@ -101,7 +105,7 @@ A worker that starts its own subagents sets their model explicitly. Defaults dif
 
 ## Context is not free
 
-A large context window is a limit, not a target. Keep briefs short, keep the `/clear` rule for reused workers, and keep the 300k auto-compact window. Cheap cached input does not repair the quality loss of a bloated context.
+A large context window is a limit, not a target. Keep briefs short, keep the `/clear` rule for reused workers (`fresh-worker.sh`; `dispatch.sh` enforces it), and keep the 300k auto-compact window. Cheap cached input does not repair the quality loss of a bloated context.
 
 ## What to measure
 
