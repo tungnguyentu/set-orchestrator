@@ -20,7 +20,8 @@ the report, `git log -- <ownership path>` or the code for the detail. Ask the us
 those are silent.
 
 Matching ignores case and Vietnamese accents ("chi phí" finds "chi phi" and "CHI PHÍ") and looks
-at the title, Goal, Change, Ownership, report summary and abandon reason. Hyphens and
+at the title, Goal, Change, Ownership, the Done-when steps (<state dir>/specs/<task>.json), the
+report summary and the abandon reason. Hyphens and
 underscores separate words.
 
 The state file resolves as in dispatch.sh: --state, else
@@ -100,12 +101,14 @@ def records(state_path):
         except OSError:
             mtime = 0
         report = e.get("report") or b.get("report") or ""
+        spec = load_json(os.path.join(os.path.dirname(state_path), "specs", task + ".json"))
+        steps = [str(i.get("step") or "") for i in spec.get("items") or [] if isinstance(i, dict)]
         verify = e.get("verify") if isinstance(e.get("verify"), dict) else {}
         recs.append({
             "task": task, "when": str(e.get("started") or time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(mtime))),
             "sort": mtime, "title": e.get("title") or "", "worker": e.get("base_title") or e.get("terminal") or "",
             "status": e.get("status") or "not in the state file", "goal": b.get("goal", ""),
-            "change": b.get("change", ""), "ownership": b.get("ownership", ""),
+            "change": b.get("change", ""), "ownership": b.get("ownership", ""), "steps": steps,
             "summary": load_json(report).get("summary") or "", "abandon_reason": e.get("abandon_reason") or "",
             "verify_ok": verify.get("ok"), "brief": brief, "checklist": e.get("checklist") or b.get("checklist", ""),
             "report": report,
@@ -190,7 +193,7 @@ def main(argv):
             print("worklog.py: search needs at least one word", file=sys.stderr)
             return 2
         hays = [set(fold(" ".join((r["title"], r["goal"], r["change"], r["ownership"], r["summary"],
-                                   r["abandon_reason"]))).split()) for r in recs]
+                                   r["abandon_reason"], *r["steps"]))).split()) for r in recs]
         df = {w: sum(1 for h in hays if w in h) for w in words}  # a word found in few Tasks weighs more
         scored = []
         for r, hay in zip(recs, hays):
@@ -214,6 +217,8 @@ def main(argv):
             print(f"worklog.py: no Task {args[0]} in this pane's work log", file=sys.stderr)
             return 2
         print(line(r))
+        for n, step in enumerate(r["steps"], 1):
+            print(f"    done-when {n}: {one_line(step, 300)}")
         for k in ("worker", "ownership", "brief", "checklist", "report"):
             if r[k]:
                 print(f"    {k}: {one_line(r[k], 400)}")
