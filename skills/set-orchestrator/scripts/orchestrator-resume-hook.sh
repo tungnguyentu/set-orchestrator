@@ -69,8 +69,8 @@ try:
                  "user whether something exists or was done, before you write a spec, and before you forward "
                  "a worker's question, run: "
                  f"python3 '{here}/worklog.py' search <words> --state '{clean(path)}'  "
-                 "(then `show <task id>`, the report, `git log` or the code). Ask the user only when those "
-                 "are silent.")
+                 "(then `show <task id>` and the report). Search the code with the GitNexus or Serena tools "
+                 "when this session has them, else `git log` and grep. Ask the user only when those are silent.")
     print("\n".join(lines))
 except Exception:
     pass

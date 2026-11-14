@@ -16,8 +16,9 @@ Usage:
 
 Search before you ask the user whether something exists or was done, before you write a spec for
 an area, and before you forward a worker's question. A match names the Task and its files; read
-the report, `git log -- <ownership path>` or the code for the detail. Ask the user only when
-those are silent.
+the report for the detail. This script knows Tasks, not code: search the code with the GitNexus or
+Serena tools when the session has them, else `git log -- <ownership path>` and grep. Ask the user
+only when those are silent.
 
 Matching ignores case and Vietnamese accents ("chi phí" finds "chi phi" and "CHI PHÍ") and looks
 at the title, Goal, Change, Ownership, the Done-when steps (<state dir>/specs/<task>.json), the
@@ -206,7 +207,8 @@ def main(argv):
         for _, r, hits in scored[:n]:
             print(line(r) + f"\n    matched {hits} of {len(words)} words; detail: worklog.py show {r['task']}")
         if not scored:
-            print("Nothing in the work log. Check `git log` and the code before you ask the user.")
+            print("Nothing in the work log. Search the code (GitNexus or Serena when available, else `git log` "
+                  "and grep) before you ask the user.")
         return 0
     if cmd == "show":
         if len(args) != 1:
