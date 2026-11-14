@@ -10,14 +10,18 @@
 # It never fails the session. Read from the state file: run_id, pane_path, the roster (title,
 # agent, model, effort, handle of each worker, so the session still knows its workers) and the
 # dispatches still awaiting settlement (status dispatched or active: task id, worker, tier).
+# Then the closing rules a compaction summary tends to lose, the exact worklog.py search command
+# (absolute path, so it survives without the skill text) and the last Tasks of the pane with their
+# results (worklog.py recent), so the session still knows what it already did.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ME="${ORCA_TERMINAL_HANDLE:-${ORCA_AGENT_SESSION_ID:+orca_session_id:$ORCA_AGENT_SESSION_ID}}"
 [ -n "$ME" ] || exit 0
 STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/${ME//:/_}.json"
 [ -r "$STATE" ] || exit 0
-python3 - "$STATE" 2>/dev/null <<'PY' || true
+python3 - "$STATE" "$HERE" 2>/dev/null <<'PY' || true
 import json, re, sys
 
-path = sys.argv[1]
+path, here = sys.argv[1], sys.argv[2]
 try:
     with open(path, encoding="utf-8") as f:
         st = json.load(f)
@@ -56,8 +60,22 @@ try:
                          f" (tier {short(d.get('tier'), 12) or 'none'})")
         if len(open_d) > 8:
             lines.append(f"- and {len(open_d) - 8} more in the state file")
+    lines.append("Closing rules: close a finished Task only with its frozen settle.sh (it runs the gate). "
+                 "`orch_state.py abandon` gives a Task up and needs --user-said with the user's words; never "
+                 "use it to close finished work. If settle.sh fails for a reason that is not the worker's, "
+                 "stop and tell the user. --keep-context stops at 6 Tasks per worker context; then run "
+                 "fresh-worker.sh.")
+    lines.append("Work log: what you already asked for and what came of it is on disk. Before you ask the "
+                 "user whether something exists or was done, before you write a spec, and before you forward "
+                 "a worker's question, run: "
+                 f"python3 '{here}/worklog.py' search <words> --state '{clean(path)}'  "
+                 "(then `show <task id>`, the report, `git log` or the code). Ask the user only when those "
+                 "are silent.")
     print("\n".join(lines))
 except Exception:
     pass
 PY
+if [ -n "$(python3 "$HERE/orch_state.py" field "$STATE" run_id 2>/dev/null)" ]; then
+  python3 "$HERE/worklog.py" recent -n 6 --state "$STATE" 2>/dev/null || true
+fi
 exit 0

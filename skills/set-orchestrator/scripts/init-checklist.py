@@ -11,6 +11,11 @@ Optional: --goal "<original goal>", --protected <glob-or-prefix> (repeat),
 --spec-out PATH (coordinator-side copy of the hashed spec; keep it OUTSIDE the worktree,
 for example next to the state file: <state dir>/specs/<taskId>.json).
 
+With --protected, the protected files that are already uncommitted (modified, staged, deleted
+or untracked) are recorded as "protectedBaseline" ({path: signature}, part of the specHash), so
+the gate later fails only when one of them changed after the dispatch, or when another protected
+path changed. Without it the user's own uncommitted work under a protected path fails every Task.
+
 Stdout: one JSON line with "specHash" (sha256 of the canonical spec, see checklist_spec.py).
 The coordinator stores that value in its state file (dispatches[].spec_hash) and always
 verifies with verify-checklist.py --expect-spec-hash <specHash>; the copy written into
@@ -23,7 +28,7 @@ Works the same for every agent (claude, grok, codex, agy): plain JSON, no hooks.
 import argparse, json, os, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from checklist_spec import canonical_spec, spec_hash  # noqa: E402
+from checklist_spec import canonical_spec, matches, path_signature, spec_hash  # noqa: E402
 
 
 def git(*args, cwd=None):
@@ -32,6 +37,19 @@ def git(*args, cwd=None):
         return r.stdout.strip() if r.returncode == 0 else ""
     except Exception:
         return ""
+
+
+def protected_baseline(patterns, workdir):
+    """{repo-relative path: signature} of the uncommitted files under the protected paths."""
+    top = git("rev-parse", "--show-toplevel", cwd=workdir)
+    if not patterns or not top:
+        return {}
+    dirty = set()
+    for args in (("diff", "--name-only", "HEAD"), ("diff", "--name-only", "--cached"),
+                 ("ls-files", "--others", "--exclude-standard")):
+        dirty.update(l.strip() for l in git(*args, cwd=top).splitlines() if l.strip())
+    return {p: path_signature(os.path.join(top, p)) for p in sorted(dirty)
+            if not p.startswith(".orca/") and any(matches(p, pat) for pat in patterns)}
 
 
 def main():
@@ -75,6 +93,9 @@ def main():
         "worker": a.worker,
         "baseRef": git("rev-parse", "HEAD", cwd=workdir),
     }
+    baseline = protected_baseline(a.protected, workdir)
+    if baseline:
+        data["protectedBaseline"] = baseline
     data["specHash"] = spec_hash(data)
     tmp = out + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -108,7 +129,7 @@ def main():
     print(f"specHash={data['specHash']}", file=sys.stderr)
     print(json.dumps({"ok": True, "checklist": os.path.abspath(out), "taskId": a.task,
                       "items": len(entries), "baseRef": data["baseRef"], "specHash": data["specHash"],
-                      "specOut": os.path.abspath(a.spec_out) if a.spec_out else None}))
+                      "protectedBaseline": len(baseline), "specOut": os.path.abspath(a.spec_out) if a.spec_out else None}))
     return 0
 
 

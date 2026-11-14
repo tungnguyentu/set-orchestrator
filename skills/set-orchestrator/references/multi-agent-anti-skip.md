@@ -35,6 +35,7 @@ Workers in one pane can be any mix of `claude`, `grok`, `codex` and `agy` (Antig
 - `acceptanceCommands`: rerun by the gate in the repo root; each must exit 0.
 - `worker`: terminal handle that owns the checklist; used only by the optional Claude Stop hook.
 - `baseRef`: diff base for the protected-path check (covers committed changes too).
+- `protectedBaseline`: written by `init-checklist.py`, `{path: signature}` of the protected files that were already uncommitted (modified, staged, deleted or untracked) when the Task was dispatched. The gate skips such a file while its content is unchanged and lists it as `protectedPreexisting`, so the user's own work in progress under a protected path does not fail every Task. It is part of the `specHash` when present, so a worker cannot add to it.
 - `init-checklist.py` adds `.orca/` to `.git/info/exclude` (local only, not committed) so checklists and reports never land in a commit; pass `--no-exclude` to skip.
 - `orca-done.sh` writes `done.json` next to the checklist after a successful send.
 

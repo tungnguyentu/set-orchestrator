@@ -87,7 +87,8 @@ class TestOpenDispatchGuard(GuardBase):
     def test_abandon_lets_the_next_task_through(self):
         self.assertEqual(self.to("term_w1").returncode, 0)
         self.assertEqual(self.to("term_w1").returncode, 7)
-        r = self.orch("abandon", self.state, "--reason", "user dropped it", "--task", "task_fake01")
+        r = self.orch("abandon", self.state, "--reason", "user dropped it", "--user-said", "bỏ task đó đi",
+                      "--task", "task_fake01")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.to("term_w1").returncode, 0)
 
@@ -102,7 +103,7 @@ class TestOpenDispatchGuard(GuardBase):
         self.seed(seed_entry("t_a", "term_w2", "active"), seed_entry("t_b", "term_w1", "settled"),
                   seed_entry("t_c", "term_w1", "verify_failed"), seed_entry("t_d", "term_w1", "send_failed"),
                   seed_entry("t_e", "term_w1", "dispatch_failed"), seed_entry("t_f", "term_w1", "abandoned"))
-        r = self.to("term_w1", "--max-per-context", "10")  # settled and abandoned Tasks still count for the context
+        r = self.to("term_w1", "--max-per-context", "6")  # settled and abandoned Tasks still count for the context
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_input_errors_come_before_the_guard(self):
@@ -139,7 +140,7 @@ class TestAbandon(GuardBase):
         return {d["task_id"]: d["status"] for d in rj(self.state)["dispatches"]}
 
     def abandon(self, *args, reason="no longer needed"):
-        return self.orch("abandon", self.state, "--reason", reason, *args)
+        return self.orch("abandon", self.state, "--reason", reason, "--user-said", "drop it", *args)
 
     def test_by_task(self):
         r = self.abandon("--task", "t1")
@@ -293,15 +294,15 @@ class TestContextGuard(GuardBase):
         for d in st["dispatches"]:
             d["status"] = "settled"
         wj(self.state, st)
-        r = self.to("term_w1", "--max-per-context", "2", env={"ORCH_MAX_TASKS_PER_CONTEXT": "9"})
+        r = self.to("term_w1", "--max-per-context", "2", env={"ORCH_MAX_TASKS_PER_CONTEXT": "6"})
         self.assertEqual(r.returncode, 8, r.stderr)
-        self.assertEqual(self.to("term_w1", env={"ORCH_MAX_TASKS_PER_CONTEXT": "9"}).returncode, 0)
+        self.assertEqual(self.to("term_w1", env={"ORCH_MAX_TASKS_PER_CONTEXT": "6"}).returncode, 0)
 
     def test_bad_limit_is_bad_input(self):
-        for bad in ("0", "-1", "x", "", "1.5"):
+        for bad in ("0", "-1", "x", "", "1.5", "7"):
             with self.subTest(flag=bad):
                 self.assertEqual(self.to("term_w1", "--max-per-context", bad).returncode, 2)
-        for bad in ("0", "abc"):
+        for bad in ("0", "abc", "9"):
             with self.subTest(env=bad):
                 self.assertEqual(self.to("term_w1", env={"ORCH_MAX_TASKS_PER_CONTEXT": bad}).returncode, 2)
         self.assertFalse(os.path.exists(self.log))
@@ -427,7 +428,7 @@ class TestFreshWorker(FreshBase):
 
     def test_abandoned_dispatch_does_not_block(self):
         self.seed(seed_entry("t_a", "term_w1", "active"))
-        self.orch("abandon", self.state, "--reason", "stuck", "--task", "t_a")
+        self.orch("abandon", self.state, "--reason", "stuck", "--user-said", "drop it", "--task", "t_a")
         self.assertEqual(self.fresh().returncode, 0)
 
     def test_refuses_when_the_terminal_is_not_idle(self):

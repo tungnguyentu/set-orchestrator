@@ -36,17 +36,20 @@ Evidence (per item marked passes=true):
 
 --protected-diff   collects changed paths (vs --base or the checklist's baseRef, plus staged,
                    unstaged and untracked files) and fails when one matches protectedPaths
-                   (glob or path prefix) and is not given with --allow-protected. It sees the
+                   (glob or path prefix) and is not given with --allow-protected. A protected
+                   file that was already uncommitted at dispatch (the checklist's hashed
+                   protectedBaseline) and still has the same content is not a violation; it is
+                   listed as protectedPreexisting. It sees the
                    WHOLE worktree: concurrent Tasks in one worktree trip each other, so only run
                    Tasks in parallel when their Ownership and Protected paths do not overlap.
 --rerun-acceptance runs every acceptanceCommands entry with sh -c in --cwd and requires exit 0.
 Agent-neutral: used by orca-done.sh (all agents), settle.sh / the coordinator, and optional
 Claude Stop hooks.
 """
-import argparse, fnmatch, json, os, re, subprocess, sys
+import argparse, json, os, re, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from checklist_spec import spec_hash  # noqa: E402
+from checklist_spec import matches, norm, path_signature, spec_hash  # noqa: E402
 
 
 def run(cmd, cwd, timeout=60):
@@ -60,21 +63,6 @@ def git_lines(args, cwd):
     except Exception:
         return None
     return [l.strip() for l in out.splitlines() if l.strip()] if rc == 0 else None
-
-
-def norm(p):
-    p = p.strip()
-    return p[2:] if p.startswith("./") else p
-
-
-def matches(path, pattern):
-    pat = norm(pattern)
-    if not pat:
-        return False
-    if any(c in pat for c in "*?["):
-        return fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, pat.rstrip("/") + "/*")
-    pat = pat.rstrip("/")
-    return path == pat or path.startswith(pat + "/")
 
 
 # ---- evidence classification -------------------------------------------------------------
@@ -186,7 +174,7 @@ def main():
     summary = {"ok": False, "checklist": os.path.abspath(a.checklist), "taskId": None,
                "specHash": None, "expectedSpecHash": None, "specIntegrity": None,
                "total": 0, "passed": 0, "misses": [], "evidence": [], "unverifiedItems": [],
-               "warnings": [], "protectedViolations": [], "acceptance": [], "report": None, "errors": []}
+               "warnings": [], "protectedViolations": [], "protectedPreexisting": [], "acceptance": [], "report": None, "errors": []}
     errs, warns = [], summary["warnings"]
 
     def finish():
@@ -314,10 +302,16 @@ def main():
                     continue
                 changed.update(got)
             allow = {norm(p).rstrip("/") for p in a.allow_protected}
+            baseline = data.get("protectedBaseline")
+            baseline = baseline if isinstance(baseline, dict) else {}
+            top = (git_lines(["rev-parse", "--show-toplevel"], cwd) or [cwd])[0]
             for path in sorted(changed):
                 if path.startswith(".orca/"):
                     continue
                 hit = next((p for p in prot if matches(path, p)), None)
+                if hit and path in baseline and baseline[path] == path_signature(os.path.join(top, path)):
+                    summary["protectedPreexisting"].append(path)  # uncommitted before the Task, untouched since
+                    continue
                 if hit and not any(path == al or path.startswith(al + "/") for al in allow):
                     summary["protectedViolations"].append({"path": path, "pattern": hit})
                     errs.append(f"protected path changed: {path} (matches {hit}); pass --allow-protected {path} only with coordinator approval"

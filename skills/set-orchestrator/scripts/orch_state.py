@@ -15,9 +15,10 @@
   orch_state.py open-dispatches STATE HANDLE [--exclude TASK]
                                                  print one line per dispatch of the terminal still dispatched or
                                                  active (other than TASK); nothing when there is none
-  orch_state.py abandon STATE --reason "<why>" (--task TASK | --terminal HANDLE | --all)
-                                                 mark matching dispatched/active entries abandoned (abandoned_at,
-                                                 abandon_reason); prints {"abandoned": N, "tasks": [...]}; exit 2 on
+  orch_state.py abandon STATE --reason "<why>" --user-said "<the user's words>" (--task TASK | --terminal HANDLE | --all)
+                                                 give up matching dispatched/active entries (abandoned_at,
+                                                 abandon_reason, abandon_user_said). Not a way to close a finished
+                                                 Task: that is settle.sh; prints {"abandoned": N, "tasks": [...]}; exit 2 on
                                                  an empty reason or not exactly one selector. Never calls Orca and
                                                  never touches an entry in any other status
   orch_state.py tasks-since-reset STATE HANDLE [--exclude TASK]
@@ -159,10 +160,18 @@ def open_dispatches(state, handle, exclude=None):
             and (exclude is None or str(d.get("task_id")) != str(exclude))]
 
 
-def abandon(path, reason, task=None, terminal=None, every=False):
-    """Mark open entries (dispatched or active) matching the selector as abandoned; return their Task ids."""
+def abandon(path, reason, task=None, terminal=None, every=False, user_said=None):
+    """Mark open entries (dispatched or active) matching the selector as abandoned; return their Task ids.
+
+    Abandon gives a Task up. It is not a way to close a finished one (that is settle.sh, which runs
+    the gate), so it needs the user's own words for it."""
     if not str(reason or "").strip():
         raise ValueError("--reason must say why; an empty reason is not accepted")
+    if not str(user_said or "").strip():
+        raise ValueError("--user-said \"<the user's words>\" is required: abandon gives a Task up and needs "
+                         "the user's word. A finished Task is closed with the frozen settle.sh, never with "
+                         "abandon. When settle.sh fails for a reason that is not the worker's, stop and tell "
+                         "the user")
     if sum((task is not None, terminal is not None, bool(every))) != 1:
         raise ValueError("give exactly one of --task, --terminal, --all")
     hit = []
@@ -175,7 +184,8 @@ def abandon(path, reason, task=None, terminal=None, every=False):
                 continue
             if terminal is not None and d.get("terminal") != terminal:
                 continue
-            d.update({"status": "abandoned", "abandoned_at": now_ts(), "abandon_reason": reason})
+            d.update({"status": "abandoned", "abandoned_at": now_ts(), "abandon_reason": reason,
+                      "abandon_user_said": user_said})
             hit.append(d.get("task_id"))
     locked_update(path, mutate)
     return hit
@@ -429,13 +439,14 @@ def main(argv):
                   f"started {d.get('started') or 'unknown'}")
         return 0
     if cmd == "abandon":
-        opts = {"--reason": None, "--task": None, "--terminal": None}
+        opts = {"--reason": None, "--task": None, "--terminal": None, "--user-said": None}
         for k in opts:
             if k in argv[3:]:
                 i = argv.index(k, 3)
                 opts[k] = argv[i + 1] if i + 1 < len(argv) else ""
         try:
-            hit = abandon(argv[2], opts["--reason"], opts["--task"], opts["--terminal"], "--all" in argv[3:])
+            hit = abandon(argv[2], opts["--reason"], opts["--task"], opts["--terminal"], "--all" in argv[3:],
+                          opts["--user-said"])
         except ValueError as e:
             print(f"abandon: {e}", file=sys.stderr)
             return 2

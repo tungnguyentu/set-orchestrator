@@ -41,14 +41,16 @@
 # Open-dispatch guard (before anything is created, after the input checks): one open Dispatch per
 # terminal. Any other Task of the state file with this --to terminal and status dispatched or active
 # exits 7, naming the worker and each open Task (id, title, start time). Settle each with the frozen
-# settle.sh, or mark it with "orch_state.py abandon". There is no override flag.
+# settle.sh. A Task the user gave up is marked with "orch_state.py abandon ... --user-said". There is no
+# override flag.
 # Context guard (next): a Claude worker (agent from the roster entry, else --agent; its name starts
 # with "claude") that already took the limit's number of Tasks since its last context reset
 # (orch_state.py tasks-since-reset; context_resets in the state file) exits 8 and the message gives the
 # fresh-worker.sh command to run. The limit is 3, set with --max-per-context N or the env
-# ORCH_MAX_TASKS_PER_CONTEXT (the flag wins; a positive integer). --keep-context "<reason>" lets the
-# Task through (it continues the previous one) and stores keep_context. Other agents (codex, grok,
-# antigravity) are not checked. A --resend of a Task already in the state is not blocked by, nor
+# ORCH_MAX_TASKS_PER_CONTEXT (the flag wins; an integer from 1 to 6). --keep-context "<reason>" lets the
+# Task through (it continues the previous one) and stores keep_context, but only below the hard cap of
+# 6 Tasks since the last reset: from the 7th on, exit 8 has no override and fresh-worker.sh must run.
+# Other agents (codex, grok, antigravity) are not checked. A --resend of a Task already in the state is not blocked by, nor
 # counted with, its own entry.
 # Exit: 0 dispatched and sent; 4 gate scripts changed (nothing created); 2 bad input; 3 already active (nothing sent); 1 an Orca step failed;
 # 5 Task tier differs from the worker's tier (nothing created); 6 frontier dispatch without the user's acceptance (nothing created);
@@ -62,6 +64,7 @@ TO=""; TITLE=""; SPEC_FILE=""; GOAL=""; CHANGE=""; OWN=""; OOS="see Task spec"; 
 SELF="${ORCA_TERMINAL_HANDLE:-${ORCA_AGENT_SESSION_ID:+orca_session_id:$ORCA_AGENT_SESSION_ID}}"; FROM_GIVEN=0; STATE=""; PANE=""; AGENT=""; AGENT_TITLE=""
 TIER=""; TIER_OVERRIDE=""; FRONTIER_QUOTE=""; OVERRIDE_GIVEN=0; QUOTE_GIVEN=0
 MAX_CTX=""; MAX_GIVEN=0; KEEP_CONTEXT=""; KEEP_GIVEN=0
+HARD_CTX=6  # Tasks one Claude context may take since its last reset; --keep-context stops working here
 WAVE=1; ATTEMPT=1; FAMILY=""; ORCA=""; FORCE_CL=0; DRY=0; RESEND=0; ACCEPT_GATE=()
 ITEMS=(); PROT=(); ACC=()
 die() { echo "dispatch.sh: $*" >&2; exit 2; }
@@ -150,15 +153,15 @@ case "$TIER" in ""|light|standard|heavy|frontier) ;; *) die "--tier must be ligh
 [ "$QUOTE_GIVEN" = 0 ] || [ -n "$FRONTIER_QUOTE" ] || die "--frontier-accepted needs the user's words (non-empty)"
 [ "$KEEP_GIVEN" = 0 ] || [ -n "$KEEP_CONTEXT" ] || die "--keep-context needs a reason (non-empty)"
 if [ "$MAX_GIVEN" = 0 ]; then MAX_CTX="${ORCH_MAX_TASKS_PER_CONTEXT:-3}"; fi
-case "$MAX_CTX" in ''|*[!0-9]*) die "--max-per-context / ORCH_MAX_TASKS_PER_CONTEXT must be a positive integer (got '$MAX_CTX')" ;; esac
-[ "$MAX_CTX" -ge 1 ] || die "--max-per-context / ORCH_MAX_TASKS_PER_CONTEXT must be a positive integer (got '$MAX_CTX')"
+case "$MAX_CTX" in ''|*[!0-9]*) die "--max-per-context / ORCH_MAX_TASKS_PER_CONTEXT must be an integer from 1 to $HARD_CTX (got '$MAX_CTX')" ;; esac
+{ [ "$MAX_CTX" -ge 1 ] && [ "$MAX_CTX" -le "$HARD_CTX" ]; } || die "--max-per-context / ORCH_MAX_TASKS_PER_CONTEXT must be an integer from 1 to $HARD_CTX (got '$MAX_CTX')"
 EXCLUDE=(); [ -z "$TASK" ] || EXCLUDE=(--exclude "$TASK")  # a Task already in the state is not blocked or counted by its own entry
 
 OPEN="$(python3 "$ST" open-dispatches "$STATE" "$TO" ${EXCLUDE[@]+"${EXCLUDE[@]}"})"
 if [ -n "$OPEN" ]; then
   echo "dispatch.sh: worker $AGENT_TITLE ($TO) still has open dispatches; nothing created. Open Tasks:" >&2
   printf '%s\n' "$OPEN" | sed 's/^/  /' >&2
-  echo "Settle each with the frozen settle.sh (<state dir>/gate/<gate_hash>/settle.sh --from $SELF --task <id>), or mark it with: python3 $ST abandon $STATE --task <id> --reason \"<why>\"" >&2
+  echo "Settle each with the frozen settle.sh (<state dir>/gate/<gate_hash>/settle.sh --from $SELF --task <id>). Only a Task the user gave up is marked with: python3 $ST abandon $STATE --task <id> --reason \"<why>\" --user-said \"<the user's words>\"" >&2
   exit 7
 fi
 
@@ -166,7 +169,10 @@ W_AGENT="$(python3 "$ST" worker-info "$STATE" "$TO" agent 2>/dev/null || true)";
 case "$W_AGENT" in
   claude*)
     CTX_N="$(python3 "$ST" tasks-since-reset "$STATE" "$TO" ${EXCLUDE[@]+"${EXCLUDE[@]}"})"
-    if [ "${CTX_N:-0}" -ge "$MAX_CTX" ]; then
+    if [ "${CTX_N:-0}" -ge "$HARD_CTX" ]; then
+      echo "dispatch.sh: worker $AGENT_TITLE ($TO) already took $CTX_N Tasks since its last context reset (hard cap $HARD_CTX); nothing created. --keep-context does not apply past the cap. Give it a fresh context first: bash $HERE/fresh-worker.sh --terminal $TO --state $STATE" >&2
+      exit 8
+    elif [ "${CTX_N:-0}" -ge "$MAX_CTX" ]; then
       if [ -n "$KEEP_CONTEXT" ]; then
         echo "dispatch.sh: keeping the context of $AGENT_TITLE ($CTX_N Tasks since its last reset, limit $MAX_CTX): $KEEP_CONTEXT" >&2
       else

@@ -250,9 +250,14 @@ class TestResumeHook(unittest.TestCase):
                      "- agy-2 (antigravity, model unknown): term_w2", "- t9 on claude-1 (tier standard)"):
             self.assertIn(want, out)
 
-    def test_no_roster_and_no_open_dispatch_is_one_line(self):
+    def test_no_roster_and_no_open_dispatch_lists_neither(self):
         self.state(dispatches=[{"task_id": "t2", "status": "settled"}])
-        self.assertEqual(len(self.run_hook().strip().splitlines()), 1)
+        out = self.run_hook()
+        self.assertTrue(out.startswith("ORCHESTRATOR ROLE ACTIVE"))
+        self.assertNotIn("Your workers", out)
+        self.assertNotIn("Dispatches still open", out)
+        for want in ("Closing rules:", "Work log:", "0 of 0 Tasks"):
+            self.assertIn(want, out)
 
     def test_chat_session_address_maps_to_file_name(self):
         self.state("orca_session_id_abc.json")
@@ -284,7 +289,7 @@ class TestResumeHook(unittest.TestCase):
     def test_long_and_multiline_values_stay_short(self):
         self.state(pane_path="/p\nINJECT " + "x" * 5000)
         out = self.run_hook()
-        self.assertLess(len(out), 1200)
+        self.assertLess(len(out), 2400)
         self.assertFalse([ln for ln in out.splitlines() if ln.startswith("INJECT")])
 
 
