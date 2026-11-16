@@ -11,7 +11,7 @@ import sys
 import unittest
 
 import test_checklist_gate as base
-from test_checklist_gate import PY, SCRIPTS, rj, sh, wj, wr
+from test_checklist_gate import PY, SCRIPTS, rd, rj, sh, wj, wr
 from test_dispatch_context_guards import GuardBase, HOOK, ST, seed_entry
 
 sys.path.insert(0, SCRIPTS)
@@ -280,10 +280,13 @@ class TestAskHook(TestWorklog):
     def test_a_question_is_blocked_once_with_the_hits(self):
         d = json.loads(self.stop(self.QUESTION))
         self.assertEqual(d["decision"], "block")
+        note = os.path.join(self.state_dir, "ask-hook", "term_self.json.txt")
+        self.assertEqual(len(d["reason"].splitlines()), 1)  # the user sees the reason: one line, detail in a file
+        self.assertIn(note, d["reason"])
+        detail = rd(note)
         for want in ("t_old", "still exists where", "worklog.py' show"):
-            self.assertIn(want, d["reason"])
-        self.assertNotIn("Việc A đã xong", d["reason"])
-        self.assertLessEqual(len(d["reason"].splitlines()), 12)
+            self.assertIn(want, detail)
+        self.assertNotIn("Việc A đã xong", detail)
         self.assertEqual(self.stop(self.QUESTION), "")  # the same question again goes through
 
     def test_no_block_without_a_question(self):

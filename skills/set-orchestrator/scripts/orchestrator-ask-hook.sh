@@ -14,8 +14,9 @@
 #   to the prompt. Lines the user quoted ("> ...") are left out when their own words are 3 or more.
 #   Skipped for a prompt that starts with "/" or "<" or has fewer than 3 words.
 # Stop: when the last message asks the user a question (a sentence that ends in "?", outside code),
-#   searches the text of the question's paragraph and blocks the stop once with {"decision":"block","reason":...}: at
-#   most 2 hits per group, then what to do (withdraw the question when an entry answers it, confirm that the thing
+#   searches the text of the question's paragraph and blocks the stop once with {"decision":"block","reason":...}: the
+#   reason is one line that names <state dir>/ask-hook/<state file name>.txt (Claude Code shows the reason to the
+#   user, so the detail goes into that file): at most 2 hits per group, then what to do (withdraw the question when an entry answers it, confirm that the thing
 #   still exists where a user can reach it, else ask again and say what was checked).
 #   It does not block when: stop_hook_active is true; the turn already ran worklog.py; or the same
 #   question was blocked last time (its hash is in <state dir>/ask-hook/<state file name>.last).
@@ -118,13 +119,21 @@ elif event == "Stop":
     except OSError:
         sys.exit(0)  # no marker, no block: never risk a loop
     hits = lookup(question, 2) or "(no Task, commit or removal matched)"
-    reason = (
-        "Check before this question reaches the user (once per question). Related Tasks and commits of this pane, "
-        f"found by the words of the question (some can be unrelated):\n{hits}\n"
+    detail = (
+        "Related Tasks and commits of this pane, found by the words of your question (some can be unrelated):\n"
+        f"{hits}\n"
         "If an entry answers the question or shows that the thing was removed or changed, read it "
         f"(python3 '{here}/worklog.py' show <task id> --state '{state}', or git show <commit>) and tell the user "
         "what you found in place of the question. Else confirm that the feature still exists where a user can reach "
-        "it (GitNexus or Serena, else git log and grep), then ask again and say in one sentence what you checked.")
+        "it (GitNexus or Serena, else git log and grep), then ask again and say in one sentence what you checked.\n")
+    # Claude Code shows the reason of a Stop hook to the user, so the reason is one line and the detail is a file
+    note = mark[:-len(".last")] + ".txt"
+    try:
+        with open(note, "w", encoding="utf-8") as f:
+            f.write(detail)
+        reason = f"Before this question reaches the user, read {note} with the Read tool and do what it says, then answer again."
+    except OSError:
+        reason = detail
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
 PY
 exit 0
