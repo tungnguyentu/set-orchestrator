@@ -345,6 +345,20 @@ class TestDispatchRecordsBaseline(GuardBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(next(d for d in rj(self.state)["dispatches"] if d["task_id"] == task)["status"], "settled")
 
+    def brief_of(self, r):
+        self.assertEqual(r.returncode, 0, r.stderr)
+        task = json.loads(r.stdout.strip().splitlines()[-1])["taskId"]
+        return rd(os.path.join(self.state_dir, "briefs", task + ".txt"))
+
+    def test_pstack_brief_names_the_commands_a_worker_may_invoke(self):
+        last = self.brief_of(self.to("term_w1", "--family", "pstack")).splitlines()[-1]
+        for word in ("/pstack:poteto-mode", "/pstack:tdd", "/pstack:interrogate", "/poteto-mode"):
+            self.assertIn(word, last.split())  # a separate word, no punctuation attached
+        self.assertIn("Skill family: `pstack`", rd(os.path.join(self.repo, ".orca", "worker-contract.md")))
+
+    def test_other_families_get_no_such_line(self):
+        self.assertNotIn("Method skills", self.brief_of(self.to("term_w2")))
+
 
 if __name__ == "__main__":
     unittest.main()

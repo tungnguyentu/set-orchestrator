@@ -132,13 +132,13 @@ Every task brief tells the worker which skill to run first, so the worker follow
 
 | Family | Detected when | Implementation | Bug | Review before done | Install |
 |--------|---------------|----------------|-----|--------------------|---------|
+| `pstack` | plugin `pstack` is cached, or `skills/poteto-mode` exists | `/pstack:poteto-mode` | `/pstack:poteto-mode` with the symptom, `/pstack:tdd` | `/pstack:interrogate`; falls back to the `ak` skills when a pstack skill cannot run | `/plugin marketplace add cursor/plugins` then `/plugin install pstack@cursor-plugins`, or `npx skills add backnotprop/pstack` |
 | `ak` | `skills/ak-cook` exists | `/ak-cook` | `/ak-debug` then `/ak-fix` | `/ak-code-review` | AgentKit (`ak-*` skills) |
 | `ce` | plugin `compound-engineering` is cached | `/ce-plan` then `/ce-work` | `/ce-debug` | `/ce-code-review` | `/plugin marketplace add EveryInc/compound-engineering-plugin` then `/plugin install compound-engineering` |
 | `superpowers` | plugin `superpowers` is cached | `writing-plans`, `executing-plans`, `test-driven-development` | `systematic-debugging` | `requesting-code-review` | `/plugin install superpowers@claude-plugins-official` |
-| `pstack` | plugin `pstack` is cached, or `skills/poteto-mode` exists | `/pstack:poteto-mode` | `/pstack:poteto-mode` with the symptom, `/pstack:tdd` | `/pstack:interrogate` | `/plugin marketplace add cursor/plugins` then `/plugin install pstack@cursor-plugins`, or `npx skills add backnotprop/pstack` |
 | `none` | nothing above | work directly, run the acceptance commands | same | review own diff | nothing |
 
-Detection order is `ak`, `ce`, `superpowers`, `pstack`. Workers that run from another config dir or another machine may have a different set installed; a worker that lacks the named skill says so in its `worker_done` report and works without it, and the orchestrator tells you so you can rerun `on` with `--skills`.
+Detection order is `pstack`, `ak`, `ce`, `superpowers`. pstack skills cannot be called by a model on its own (`disable-model-invocation`), so with the `pstack` family every brief ends with a line that names the commands; Claude Code allows the call when the message holds the command. Workers that run from another config dir or another machine may have a different set installed; a worker that lacks the named skill says so in its `worker_done` report and works without it, and the orchestrator tells you so you can rerun `on` with `--skills`.
 
 ### What `on` does
 

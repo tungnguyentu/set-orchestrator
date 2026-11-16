@@ -8,7 +8,7 @@
 #     [--out-of-scope "<short>"] [--item "<Done-when N>"]... [--task <existing task id>] \
 #     [--deps '<json array>'] [--from <self handle>] [--state <state file>] [--pane <path>] \
 #     [--agent <type>] [--agent-title <claude-1>] [--wave N] [--attempt N] \
-#     [--family ak|ce|superpowers|none] [--orca <exe>] [--force-checklist] [--resend] [--accept-gate-change] [--dry-run] \
+#     [--family ak|ce|superpowers|pstack|none] [--orca <exe>] [--force-checklist] [--resend] [--accept-gate-change] [--dry-run] \
 #     [--tier light|standard|heavy|frontier] [--tier-override "<reason>"] [--frontier-accepted "<user's words>"] \
 #     [--max-per-context N] [--keep-context "<reason>"]
 #
@@ -336,6 +336,11 @@ Out of scope: $OOS
 Acceptance: $FIRST_ACC
 Done-when: see checklist (mark with: python3 $SKILL/scripts/mark-item.py --checklist $CHECKLIST --id N --evidence "…" or --run "<cmd>")
 EOF
+# pstack skills set disable-model-invocation: Claude Code lets a worker call one only when the message it
+# received holds the command as a separate word, so the brief must carry them (plugin and plain-skill names).
+case "$FAMILY" in
+  pstack) echo "Method skills you may invoke: /pstack:poteto-mode /pstack:tdd /pstack:interrogate /poteto-mode /tdd /interrogate" >> "$BRIEF" ;;
+esac
 "$ORCA" terminal wait --terminal "$TO" --for tui-idle --timeout-ms 120000 --json >/dev/null 2>&1 || true
 if ! orca_json terminal send --terminal "$TO" --text "$(cat "$BRIEF")" --enter --wait-submit 15 --json >/dev/null; then
   upsert "{\"task_id\": $(jstr "$TASK"), \"status\": \"send_failed\"}"; exit 1
