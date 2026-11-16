@@ -352,7 +352,8 @@ class TestDispatchRecordsBaseline(GuardBase):
 
     def test_pstack_brief_names_the_commands_a_worker_may_invoke(self):
         last = self.brief_of(self.to("term_w1", "--family", "pstack")).splitlines()[-1]
-        for word in ("/pstack:poteto-mode", "/pstack:tdd", "/pstack:interrogate", "/poteto-mode"):
+        for word in ("/pstack:poteto-mode", "/pstack:architect", "/pstack:how", "/pstack:why", "/pstack:tdd",
+                     "/pstack:blast-radius", "/pstack:interrogate", "/poteto-mode"):
             self.assertIn(word, last.split())  # a separate word, no punctuation attached
         self.assertIn("Skill family: `pstack`", rd(os.path.join(self.repo, ".orca", "worker-contract.md")))
 

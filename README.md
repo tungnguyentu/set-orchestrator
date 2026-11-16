@@ -132,7 +132,7 @@ Every task brief tells the worker which skill to run first, so the worker follow
 
 | Family | Detected when | Implementation | Bug | Review before done | Install |
 |--------|---------------|----------------|-----|--------------------|---------|
-| `pstack` | plugin `pstack` is cached, or `skills/poteto-mode` exists | `/pstack:poteto-mode` | `/pstack:poteto-mode` with the symptom, `/pstack:tdd` | `/pstack:interrogate`; falls back to the `ak` skills when a pstack skill cannot run | `/plugin marketplace add cursor/plugins` then `/plugin install pstack@cursor-plugins`, or `npx skills add backnotprop/pstack` |
+| `pstack` | plugin `pstack` is cached, or `skills/poteto-mode` exists | `/pstack:poteto-mode`; `/pstack:how` and `/pstack:why` to understand code first, `/pstack:architect` for a new interface between modules | `/pstack:poteto-mode` with the symptom, `/pstack:tdd` | `/pstack:blast-radius` for shared code, then `/pstack:interrogate`; falls back to the `ak` skills when a pstack skill cannot run | `/plugin marketplace add cursor/plugins` then `/plugin install pstack@cursor-plugins`, or `npx skills add backnotprop/pstack` |
 | `ak` | `skills/ak-cook` exists | `/ak-cook` | `/ak-debug` then `/ak-fix` | `/ak-code-review` | AgentKit (`ak-*` skills) |
 | `ce` | plugin `compound-engineering` is cached | `/ce-plan` then `/ce-work` | `/ce-debug` | `/ce-code-review` | `/plugin marketplace add EveryInc/compound-engineering-plugin` then `/plugin install compound-engineering` |
 | `superpowers` | plugin `superpowers` is cached | `writing-plans`, `executing-plans`, `test-driven-development` | `systematic-debugging` | `requesting-code-review` | `/plugin install superpowers@claude-plugins-official` |

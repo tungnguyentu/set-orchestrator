@@ -339,7 +339,7 @@ EOF
 # pstack skills set disable-model-invocation: Claude Code lets a worker call one only when the message it
 # received holds the command as a separate word, so the brief must carry them (plugin and plain-skill names).
 case "$FAMILY" in
-  pstack) echo "Method skills you may invoke: /pstack:poteto-mode /pstack:tdd /pstack:interrogate /poteto-mode /tdd /interrogate" >> "$BRIEF" ;;
+  pstack) echo "Method skills you may invoke: /pstack:poteto-mode /pstack:architect /pstack:how /pstack:why /pstack:tdd /pstack:blast-radius /pstack:interrogate /poteto-mode /architect /how /why /tdd /blast-radius /interrogate" >> "$BRIEF" ;;
 esac
 "$ORCA" terminal wait --terminal "$TO" --for tui-idle --timeout-ms 120000 --json >/dev/null 2>&1 || true
 if ! orca_json terminal send --terminal "$TO" --text "$(cat "$BRIEF")" --enter --wait-submit 15 --json >/dev/null; then
