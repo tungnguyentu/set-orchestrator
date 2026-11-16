@@ -1,5 +1,5 @@
 {
-  "_comment": "OPTIONAL. Orchestrator session only (the Claude session that ran /set-orchestrator on). Merge ONLY the \"hooks\" object into that session's settings.json (e.g. $CLAUDE_CONFIG_DIR/settings.json) and replace <SKILL_DIR> with the absolute path of the set-orchestrator skill directory. Delete this _comment key when copying. After /compact or a resume, the hook prints a reminder that this session is the orchestrator, with its workers (title, agent, model, handle) and its open dispatches, but only while the Run's state file exists; with no state file it prints nothing. The matcher is a regex over the SessionStart source.",
+  "_comment": "OPTIONAL. Orchestrator session only (the Claude session that ran /set-orchestrator on). Merge ONLY the \"hooks\" object into that session's settings.json (e.g. $CLAUDE_CONFIG_DIR/settings.json) and replace <SKILL_DIR> with the absolute path of the set-orchestrator skill directory. Delete this _comment key when copying. SessionStart (orchestrator-resume-hook.sh): after /compact or a resume, prints a reminder that this session is the orchestrator, with its workers (title, agent, model, handle), its open dispatches and its last Tasks. The matcher is a regex over the SessionStart source. UserPromptSubmit and Stop (orchestrator-ask-hook.sh, no matcher): search the pane's Tasks and commits with the words of the user's prompt, and once more before a question reaches the user, and put the hits in the context; a question costs at most one more turn. All three act only while the Run's state file exists; in every other session they print nothing. You can install the SessionStart entry alone.",
   "hooks": {
     "SessionStart": [
       {
@@ -9,6 +9,28 @@
             "type": "command",
             "command": "bash <SKILL_DIR>/scripts/orchestrator-resume-hook.sh",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash <SKILL_DIR>/scripts/orchestrator-ask-hook.sh",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash <SKILL_DIR>/scripts/orchestrator-ask-hook.sh",
+            "timeout": 20
           }
         ]
       }

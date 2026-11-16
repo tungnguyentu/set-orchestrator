@@ -1,6 +1,6 @@
 """Tests for the protected-path baseline (the user's uncommitted work under a protected path does not
 fail a Task), abandon needing the user's words, the hard cap on --keep-context, worklog.py and the
-work-log part of the resume hook.
+work-log part of the resume hook, and the ask hook (orchestrator-ask-hook.sh).
 
 Run:  python3 -m unittest discover -s scripts/tests
 """
@@ -18,6 +18,7 @@ sys.path.insert(0, SCRIPTS)
 from checklist_spec import spec_hash  # noqa: E402
 
 WORKLOG = os.path.join(SCRIPTS, "worklog.py")
+ASK_HOOK = os.path.join(SCRIPTS, "orchestrator-ask-hook.sh")
 
 
 class TestProtectedBaseline(base.Repo):
@@ -225,6 +226,106 @@ class TestWorklog(GuardBase):
         for want in ("ORCHESTRATOR ROLE ACTIVE", "--user-said", "frozen settle.sh", f"{WORKLOG}' search <words> --state '{self.state}'",
                      "3 of 3 Tasks", "result: nút đã có, 12 test qua"):
             self.assertIn(want, r.stdout)
+
+
+    # ---- commits, removals, --brief ----
+    def commit(self, subject):
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", subject], cwd=self.repo, check=True, capture_output=True)
+
+    def test_search_lists_matching_commits(self):
+        self.commit("fix(rbac): bỏ menu Import/Export khỏi vai Ban")
+        out = self.wl("search", "menu", "export").stdout
+        self.assertIn("0 of 3 Tasks", out)
+        self.assertIn("1 of 2 commits match", out)
+        self.assertIn("fix(rbac): bỏ menu Import/Export khỏi vai Ban", out)
+
+    def test_search_lists_what_was_removed_before(self):
+        self.commit("fix(rbac): bỏ menu Import/Export khỏi vai Ban")
+        self.commit("feat: import mẫu chi phí")
+        out = self.wl("search", "import", "mẫu", "-n", "1").stdout
+        head, _, tail = out.partition("Removed or hidden before")
+        self.assertIn("feat: import mẫu chi phí", head)
+        self.assertNotIn("bỏ menu", head)
+        self.assertIn("fix(rbac): bỏ menu Import/Export khỏi vai Ban", tail)
+
+    def test_brief_prints_one_line_per_task(self):
+        out = self.wl("search", "nút", "import", "--brief").stdout
+        self.assertIn("t_old", out)
+        self.assertIn(": Thêm nút import QĐ chi phí", out)
+        self.assertNotIn("user asked:", out)
+
+    def test_common_words_do_not_outrank_a_rare_word(self):
+        briefs = os.path.join(self.state_dir, "briefs")
+        for i in range(30):
+            wr(os.path.join(briefs, f"t_c{i}.txt"), f"Checklist: {self.repo}/.orca/tasks/t_c{i}/checklist.json\n"
+                                                    "Goal: sửa mẫu báo cáo\nChange: mẫu báo cáo tháng\n")
+        first = self.wl("search", "mẫu", "báo", "cáo", "đăng", "nhập", "-n", "1").stdout.splitlines()[1]
+        self.assertIn("t_new", first)  # "đăng nhập" is in one Task; "mẫu báo cáo" is in 30
+
+
+class TestAskHook(TestWorklog):
+    """orchestrator-ask-hook.sh: the search runs by itself when the user writes and before a question is asked."""
+
+    def hook(self, payload, handle="term_self"):
+        r = sh(["bash", ASK_HOOK], self.tmp, {"CLAUDE_CONFIG_DIR": os.path.join(self.tmp, "cfg"),
+                                              "ORCA_TERMINAL_HANDLE": handle}, inp=json.dumps(payload))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def stop(self, message, **extra):
+        return self.hook({"hook_event_name": "Stop", "last_assistant_message": message, **extra})
+
+    QUESTION = "Việc A đã xong.\n\nCó thêm lại nút import QĐ chi phí không?\n\nWorker vẫn đang chạy."
+
+    def test_a_question_is_blocked_once_with_the_hits(self):
+        d = json.loads(self.stop(self.QUESTION))
+        self.assertEqual(d["decision"], "block")
+        for want in ("Có thêm lại nút import QĐ chi phí không?", "t_old", "still exists where", "worklog.py' show"):
+            self.assertIn(want, d["reason"])
+        self.assertNotIn("Việc A đã xong", d["reason"])
+        self.assertEqual(self.stop(self.QUESTION), "")  # the same question again goes through
+
+    def test_no_block_without_a_question(self):
+        for msg in ("Worker claude-1 vẫn đang sửa 4 test. Tôi sẽ báo kết quả.", "Chạy lệnh `grep -c '?' file.txt` là xong.",
+                    "```\nSELECT 1 WHERE a = ?\n```\nXong.", "Ok?"):
+            with self.subTest(msg=msg):
+                self.assertEqual(self.stop(msg), "")
+
+    def test_no_block_when_stop_hook_active(self):
+        self.assertEqual(self.stop(self.QUESTION, stop_hook_active=True), "")
+
+    def test_no_block_when_the_turn_already_searched(self):
+        t = os.path.join(self.tmp, "transcript.jsonl")
+        rows = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "input": {"command": "worklog.py search x"}}]}},
+                {"type": "user", "message": {"content": "thêm nút import"}},
+                {"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}}]
+        wr(t, "\n".join(json.dumps(r) for r in rows) + "\n")
+        self.assertIn("block", self.stop(self.QUESTION, transcript_path=t))  # the search was in an earlier turn
+        rows.insert(2, {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "input": {"command": f"python3 {WORKLOG} search nut import"}}]}})
+        wr(t, "\n".join(json.dumps(r) for r in rows) + "\n")
+        self.assertEqual(self.stop("Có thêm nút import QĐ chi phí cho Ban không?", transcript_path=t), "")
+
+    def test_user_prompt_gets_the_hits(self):
+        out = self.hook({"hook_event_name": "UserPromptSubmit", "prompt": "> câu trích dẫn kubernetes\n\nnút import QĐ chi phí đâu rồi"})
+        self.assertIn("Work log lookup", out)
+        self.assertIn("t_old", out)
+        self.assertNotIn("kubernetes", out)
+
+    def test_user_prompt_skips(self):
+        for prompt in ("làm", "ok đi", "/set-orchestrator status of the pane", "<task-notification> nút import chi phí",
+                       "kubernetes helm terraform"):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(self.hook({"hook_event_name": "UserPromptSubmit", "prompt": prompt}), "")
+
+    def test_silent_outside_the_orchestrator(self):
+        for payload in ({"hook_event_name": "Stop", "last_assistant_message": self.QUESTION},
+                        {"hook_event_name": "UserPromptSubmit", "prompt": "nút import QĐ chi phí đâu rồi"}):
+            self.assertEqual(self.hook(payload, handle="term_w1"), "")
+        self.assertEqual(self.hook({"hook_event_name": "PreToolUse"}), "")
+        r = sh(["bash", ASK_HOOK], self.tmp, {"CLAUDE_CONFIG_DIR": os.path.join(self.tmp, "cfg"),
+                                              "ORCA_TERMINAL_HANDLE": "term_self"}, inp="not json")
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
 
 
 class TestDispatchRecordsBaseline(GuardBase):

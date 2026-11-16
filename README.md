@@ -117,6 +117,15 @@ Workers get worse as their context fills, and a Task is cheap next to a worker t
 
 After `/compact` or a resumed session the model can forget it is the orchestrator. `skills/set-orchestrator/scripts/orchestrator-resume-hook.sh` is a Claude Code `SessionStart` hook (matcher `compact|resume`) that, while the Run's state file exists, prints a short reminder: you are the orchestrator for Run X in pane Y, the state file path, how many dispatches are unsettled, do not edit code, run `/set-orchestrator status`. With no state file (after `off`), no handle, or any error it prints nothing and exits 0. It is not installed automatically: merge the `hooks` object of `skills/set-orchestrator/references/orchestrator-hook.example.json` into the orchestrator session's `settings.json` and replace `<SKILL_DIR>`.
 
+### Optional hook: search before the orchestrator asks you
+
+A rule that says "search the work log before you ask the user" is forgotten between compactions. `skills/set-orchestrator/scripts/orchestrator-ask-hook.sh` runs the search itself. It is one script for two Claude Code hook events, and it acts only in the orchestrator session while the Run's state file exists. In a worker or any other session it prints nothing.
+
+- `UserPromptSubmit`: searches the pane's Tasks and commits with the words of your prompt and adds the hits to the context, including the Tasks and commits that removed or hid something. Prompts of fewer than 3 words and slash commands are skipped.
+- `Stop`: when the orchestrator's message asks you a question, the hook searches with the text of that question and blocks the stop once. The orchestrator gets the hits and three steps: withdraw the question when an entry answers it, confirm that the feature still exists where a user can reach it, else ask again and say what it checked. A question costs at most one more turn. A question asked after the orchestrator ran `worklog.py` in the same turn is not blocked.
+
+The search matches words, not meaning. It finds an earlier Task or commit only when it shares words with the question, and some hits are unrelated. The same example file holds the two entries. You can install the `SessionStart` entry alone.
+
 ### `--skills`: which workflow skills the workers use
 
 Every task brief tells the worker which skill to run first, so the worker follows a real workflow (plan, test, review) instead of editing files straight away. The skill family is detected from the orchestrator's config dir and can be forced with `--skills`:
@@ -158,7 +167,8 @@ From then on, every implementation request goes through the dispatch loop: write
 | `skills/set-orchestrator/scripts/open-agents.sh` | Opens agent terminals in a pane with permission prompts disabled and waits until Orca reports the agent identity. |
 | `skills/set-orchestrator/scripts/dispatch.sh` | One-line dispatch of a Task: open-dispatch guard (exit 7), context guard (`--max-per-context`, `--keep-context`; exit 8), tier and frontier guards (`--tier`, `--tier-override`, `--frontier-accepted`; exit 5 and 6), checklist with a trusted specHash, worker contract, short brief, send, tab title, state entry. |
 | `skills/set-orchestrator/scripts/orch_state.py` | State file helpers: entries, the gate snapshot, the model-to-tier table, `accept-frontier`, `abandon`, `tasks-since-reset`, `context-reset`, `roster-set`. |
-| `skills/set-orchestrator/scripts/worklog.py` | Read-only work log of a pane: `recent`, `search <words>`, `show <task id>` over the stored briefs, state entries and worker reports, so the orchestrator can look up what it already did after a compact. |
+| `skills/set-orchestrator/scripts/worklog.py` | Read-only work log of a pane: `recent`, `search <words>`, `show <task id>` over the stored briefs, state entries and worker reports, so the orchestrator can look up what it already did after a compact. `search` also lists the matching commits of the pane and the Tasks and commits that removed or hid something. |
+| `skills/set-orchestrator/scripts/orchestrator-ask-hook.sh` | Optional `UserPromptSubmit` and `Stop` hook for the orchestrator session: runs `worklog.py search` on the user's prompt, and once before a question reaches the user. |
 | `skills/set-orchestrator/scripts/fresh-worker.sh` | Gives an idle Claude worker a fresh context: handoff file first, then `/clear`, optionally a new model and effort; records `context_resets`. Not part of the frozen gate set. |
 | `skills/set-orchestrator/scripts/orchestrator-resume-hook.sh`, `references/orchestrator-hook.example.json` | Optional `SessionStart` hook that restores the orchestrator role after `/compact` or a resume: role, workers, open dispatches, the closing rules, the work-log search command and the last 6 Tasks with their results. |
 | `skills/set-orchestrator/scripts/settle.sh` | Verifies a finished Task against the specHash stored in the state file and records the result. Run the frozen copy under `<state dir>/gate/<hash>/` that `dispatch.sh` prints, so a worker cannot edit the gate it is checked by. |
