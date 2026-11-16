@@ -14,8 +14,8 @@
 #   to the prompt. Lines the user quoted ("> ...") are left out when their own words are 3 or more.
 #   Skipped for a prompt that starts with "/" or "<" or has fewer than 3 words.
 # Stop: when the last message asks the user a question (a sentence that ends in "?", outside code),
-#   searches the text of the question's paragraph and blocks the stop once with {"decision":"block","reason":...}: the
-#   hits, then what to do (withdraw the question when an entry answers it, confirm that the thing
+#   searches the text of the question's paragraph and blocks the stop once with {"decision":"block","reason":...}: at
+#   most 2 hits per group, then what to do (withdraw the question when an entry answers it, confirm that the thing
 #   still exists where a user can reach it, else ask again and say what was checked).
 #   It does not block when: stop_hook_active is true; the turn already ran worklog.py; or the same
 #   question was blocked last time (its hash is in <state dir>/ask-hook/<state file name>.last).
@@ -117,19 +117,14 @@ elif event == "Stop":
             f.write(digest)
     except OSError:
         sys.exit(0)  # no marker, no block: never risk a loop
-    hits = lookup(question, 4) or "(no Task, commit or removal matched the words of the question)"
+    hits = lookup(question, 2) or "(no Task, commit or removal matched)"
     reason = (
-        "Automatic check before a question reaches the user (once per question). You asked: "
-        f"\"{question[:600]}\"\nThe work log and the commits of this pane, searched with the words of the question "
-        f"(some lines can be unrelated):\n{hits}\n"
-        "Do this now, then answer again:\n"
-        "1. If an entry answers the question, or shows that the thing was removed, hidden or changed, read it "
-        f"(python3 '{here}/worklog.py' show <task id> --state '{state}', or git show <commit>) and withdraw the "
-        "question: tell the user in one sentence what you found.\n"
-        "2. If the question is about a feature, or came from a worker, confirm that the feature still exists where "
-        "a user can reach it (menu, route, button, role), not only in backend code. Use the GitNexus or Serena "
-        "tools when this session has them, else git log and grep.\n"
-        "3. Still open after that: ask the question again and say in one sentence what you checked.")
+        "Check before this question reaches the user (once per question). Related Tasks and commits of this pane, "
+        f"found by the words of the question (some can be unrelated):\n{hits}\n"
+        "If an entry answers the question or shows that the thing was removed or changed, read it "
+        f"(python3 '{here}/worklog.py' show <task id> --state '{state}', or git show <commit>) and tell the user "
+        "what you found in place of the question. Else confirm that the feature still exists where a user can reach "
+        "it (GitNexus or Serena, else git log and grep), then ask again and say in one sentence what you checked.")
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
 PY
 exit 0

@@ -280,9 +280,10 @@ class TestAskHook(TestWorklog):
     def test_a_question_is_blocked_once_with_the_hits(self):
         d = json.loads(self.stop(self.QUESTION))
         self.assertEqual(d["decision"], "block")
-        for want in ("Có thêm lại nút import QĐ chi phí không?", "t_old", "still exists where", "worklog.py' show"):
+        for want in ("t_old", "still exists where", "worklog.py' show"):
             self.assertIn(want, d["reason"])
         self.assertNotIn("Việc A đã xong", d["reason"])
+        self.assertLessEqual(len(d["reason"].splitlines()), 12)
         self.assertEqual(self.stop(self.QUESTION), "")  # the same question again goes through
 
     def test_no_block_without_a_question(self):
