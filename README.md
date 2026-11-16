@@ -10,7 +10,7 @@ Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Code
 - Orca 1.4.227 or newer, with the `orca` CLI on `PATH`. The skill uses `orca orchestration`, `orca terminal` and `orca status`.
 - Python 3 and bash for the helper scripts.
 - Optional: the agent CLIs you want the orchestrator to open for you (`claude`, `grok`, `codex`, `agy`).
-- Optional: one workflow skill family for the workers: AgentKit (`ak-*` skills), [compound-engineering](https://github.com/EveryInc/compound-engineering-plugin), or [superpowers](https://github.com/obra/superpowers). See `--skills` below. Without one, workers work directly.
+- Optional: one workflow skill family for the workers: AgentKit (`ak-*` skills), [compound-engineering](https://github.com/EveryInc/compound-engineering-plugin), [superpowers](https://github.com/obra/superpowers), or [pstack](https://github.com/backnotprop/pstack). See `--skills` below. Without one, workers work directly.
 - Optional: a `cc-launch` wrapper at `~/.local/bin/cc-launch`. When present, Claude workers opened with `--open` use it. When absent, they start with plain `claude`.
 
 ## Install
@@ -43,7 +43,7 @@ To update a clone, run `git -C ~/.claude/skills/set-orchestrator pull`.
 Open the agents you want as workers in the same Orca pane as the Claude session, or let the skill open them. Then, in that Claude session:
 
 ```text
-/set-orchestrator on ["<objective>"] [--open <agent>[:<count>][@<model>[/<effort>]],...] [--skills ak|ce|superpowers|none]
+/set-orchestrator on ["<objective>"] [--open <agent>[:<count>][@<model>[/<effort>]],...] [--skills ak|ce|superpowers|pstack|none]
 /set-orchestrator status
 /set-orchestrator off
 ```
@@ -135,9 +135,10 @@ Every task brief tells the worker which skill to run first, so the worker follow
 | `ak` | `skills/ak-cook` exists | `/ak-cook` | `/ak-debug` then `/ak-fix` | `/ak-code-review` | AgentKit (`ak-*` skills) |
 | `ce` | plugin `compound-engineering` is cached | `/ce-plan` then `/ce-work` | `/ce-debug` | `/ce-code-review` | `/plugin marketplace add EveryInc/compound-engineering-plugin` then `/plugin install compound-engineering` |
 | `superpowers` | plugin `superpowers` is cached | `writing-plans`, `executing-plans`, `test-driven-development` | `systematic-debugging` | `requesting-code-review` | `/plugin install superpowers@claude-plugins-official` |
+| `pstack` | plugin `pstack` is cached, or `skills/poteto-mode` exists | `/pstack:poteto-mode` | `/pstack:poteto-mode` with the symptom, `/pstack:tdd` | `/pstack:interrogate` | `/plugin marketplace add cursor/plugins` then `/plugin install pstack@cursor-plugins`, or `npx skills add backnotprop/pstack` |
 | `none` | nothing above | work directly, run the acceptance commands | same | review own diff | nothing |
 
-Detection order is `ak`, `ce`, `superpowers`. Workers that run from another config dir or another machine may have a different set installed; a worker that lacks the named skill says so in its `worker_done` report and works without it, and the orchestrator tells you so you can rerun `on` with `--skills`.
+Detection order is `ak`, `ce`, `superpowers`, `pstack`. Workers that run from another config dir or another machine may have a different set installed; a worker that lacks the named skill says so in its `worker_done` report and works without it, and the orchestrator tells you so you can rerun `on` with `--skills`.
 
 ### What `on` does
 

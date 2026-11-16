@@ -4,7 +4,7 @@
 #
 # Usage:
 #   install-worker-contract.sh --pane <pane path> --skill <abs skill dir> \
-#     --family ak|ce|superpowers|none [--orca <exe>] [--force]
+#     --family ak|ce|superpowers|pstack|none [--orca <exe>] [--force]
 #
 # Method/Context lines come from the "Method and Context lines per skill family" table in
 # references/coordinator-loop.md (single source of truth).
@@ -34,7 +34,7 @@ done
 [ -n "$SKILL" ] || SKILL="$(cd "$HERE/.." && pwd)"
 case "$SKILL" in /*) ;; *) die "--skill must be an absolute path" ;; esac
 [ -f "$SKILL/scripts/orca-done.sh" ] || die "not a set-orchestrator skill dir (no scripts/orca-done.sh): $SKILL"
-case "$FAMILY" in ak|ce|superpowers|none) ;; *) die "--family must be ak|ce|superpowers|none" ;; esac
+case "$FAMILY" in ak|ce|superpowers|pstack|none) ;; *) die "--family must be ak|ce|superpowers|pstack|none" ;; esac
 
 TEMPLATE="$SKILL/references/worker-contract.md"
 TABLE="$SKILL/references/coordinator-loop.md"

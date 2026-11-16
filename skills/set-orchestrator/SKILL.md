@@ -30,7 +30,7 @@ Role restore after `/compact` or a resume: the optional SessionStart hook `scrip
 
 | Command | What it does | Detail |
 |---|---|---|
-| `on [objective] [--from <handle>] [--open <agent>[:<count>][@<model>[/<effort>]],...] [--skills ak\|ce\|superpowers\|none]` | Find own handle and pane, bind or create the Run, optionally open agents, list the roster, detect the skill family, write the state file and the worker contract, set auto-compact, rename tabs, tell the user | `references/setup.md` |
+| `on [objective] [--from <handle>] [--open <agent>[:<count>][@<model>[/<effort>]],...] [--skills ak\|ce\|superpowers\|pstack\|none]` | Find own handle and pane, bind or create the Run, optionally open agents, list the roster, detect the skill family, write the state file and the worker contract, set auto-compact, rename tabs, tell the user | `references/setup.md` |
 | `status` | Read the state file (and `plans/handoffs/session-handoff.md` if newer), `run-current`, `worker-list`, the roster; print Run, pane, active and settled dispatches, who owes a decision. Restores the role after compaction | `references/setup.md` |
 | `off` | Ask about reclaimable and idle opened terminals, never abandon active Dispatches without the user's word, no `reset`, delete the state file | `references/setup.md` |
 
