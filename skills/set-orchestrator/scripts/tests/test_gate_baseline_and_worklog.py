@@ -283,8 +283,9 @@ class TestAskHook(TestWorklog):
         note = os.path.join(self.state_dir, "ask-hook", "term_self.json.txt")
         self.assertEqual(len(d["reason"].splitlines()), 1)  # the user sees the reason: one line, detail in a file
         self.assertIn(note, d["reason"])
+        self.assertIn("do not repeat it", d["reason"])
         detail = rd(note)
-        for want in ("t_old", "still exists where", "worklog.py' show"):
+        for want in ("t_old", "still exists where", "worklog.py' show", "Do not repeat any of it"):
             self.assertIn(want, detail)
         self.assertNotIn("Việc A đã xong", detail)
         self.assertEqual(self.stop(self.QUESTION), "")  # the same question again goes through

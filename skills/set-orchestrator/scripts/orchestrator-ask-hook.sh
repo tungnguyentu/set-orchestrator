@@ -125,13 +125,15 @@ elif event == "Stop":
         "If an entry answers the question or shows that the thing was removed or changed, read it "
         f"(python3 '{here}/worklog.py' show <task id> --state '{state}', or git show <commit>) and tell the user "
         "what you found in place of the question. Else confirm that the feature still exists where a user can reach "
-        "it (GitNexus or Serena, else git log and grep), then ask again and say in one sentence what you checked.\n")
+        "it (GitNexus or Serena, else git log and grep), then ask again and say in one sentence what you checked.\n"
+        "The user already has your last message on screen. Do not repeat any of it: your next message is only the "
+        "finding, or only the question with what you checked, in at most 3 sentences.\n")
     # Claude Code shows the reason of a Stop hook to the user, so the reason is one line and the detail is a file
     note = mark[:-len(".last")] + ".txt"
     try:
         with open(note, "w", encoding="utf-8") as f:
             f.write(detail)
-        reason = f"Before this question reaches the user, read {note} with the Read tool and do what it says, then answer again."
+        reason = f"Before this question reaches the user, read {note} with the Read tool and do what it says. The user already has your last message: do not repeat it, write only the finding or the question (at most 3 sentences)."
     except OSError:
         reason = detail
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
