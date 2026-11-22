@@ -71,6 +71,9 @@ try:
                  f"python3 '{here}/worklog.py' search <words> --state '{clean(path)}'  "
                  "(then `show <task id>` and the report). Search the code with the GitNexus or Serena tools "
                  "when this session has them, else `git log` and grep. Ask the user only when those are silent.")
+    lines.append("Decisions: when the user removes, hides or settles a feature, screen, column or text, add one dated "
+                 "line with their words to this project's memory (MEMORY.md and its files) in the same turn, even "
+                 "though a commit holds the change. That file is in your context in every session; your history is not.")
     print("\n".join(lines))
 except Exception:
     pass

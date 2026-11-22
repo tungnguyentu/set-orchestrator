@@ -223,7 +223,7 @@ class TestWorklog(GuardBase):
         r = sh(["bash", HOOK], self.tmp, {"CLAUDE_CONFIG_DIR": os.path.join(self.tmp, "cfg"),
                                           "ORCA_TERMINAL_HANDLE": "term_self"}, inp="{}")
         self.assertEqual(r.returncode, 0)
-        for want in ("ORCHESTRATOR ROLE ACTIVE", "--user-said", "frozen settle.sh", f"{WORKLOG}' search <words> --state '{self.state}'",
+        for want in ("ORCHESTRATOR ROLE ACTIVE", "--user-said", "frozen settle.sh", "project's memory", f"{WORKLOG}' search <words> --state '{self.state}'",
                      "3 of 3 Tasks", "result: nút đã có, 12 test qua"):
             self.assertIn(want, r.stdout)
 
