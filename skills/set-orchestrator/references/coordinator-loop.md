@@ -137,7 +137,7 @@ Use after an implement Task with more than ~3 Done-when items, a change touching
 
 ## Method and Context lines per skill family
 
-`on` records the skill family in the state file (`skill_family`: `ak`, `ce`, `superpowers`, `pstack` or `none`; detected from the orchestrator's own skills directory and plugin cache, overridable with `--skills`). `install-worker-contract.sh` copies the family's two lines from this table into the Method and Context sections of `<pane>/.orca/worker-contract.md` (parsed from this table; keep its row format). They are not repeated in per-dispatch briefs. The script appends to every Method line: "If a named skill is not installed in this terminal, say so in your worker_done summary and work without it."
+`on` records the skill family in the state file (`skill_family`: `ak`, `ce`, `superpowers`, `pstack` or `none`; detected from the orchestrator's own skills directory and plugin cache, overridable with `--skills`). `install-worker-contract.sh` copies the family's two lines from this table into the Method and Context sections of `<pane>/.orca/worker-contract.md` (parsed from this table; keep its row format). They are not repeated in per-dispatch briefs. The script appends to every Method line how a Pi worker calls a skill (`/skill:<name>`, no plugin prefix) and: "If a named skill is not installed in this terminal, say so in your worker_done summary and work without it."
 
 | Family | Method line | Context line |
 |--------|-------------|--------------|

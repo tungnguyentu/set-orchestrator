@@ -48,7 +48,9 @@ python3 - "$TEMPLATE" "$TABLE" "$DEST" "$SKILL" "$FAMILY" "$ORCA_EXE" "$FORCE" <
 import os, re, sys
 template, table, dest, skill, family, orca, force = sys.argv[1:8]
 force = force == "1"
-TAIL = "If a named skill is not installed in this terminal, say so in your worker_done summary and work without it."
+TAIL = ("In a Pi terminal a skill is called as `/skill:<name>` without any plugin prefix, for example "
+        "`/skill:ak-cook` or `/skill:poteto-mode`. "
+        "If a named skill is not installed in this terminal, say so in your worker_done summary and work without it.")
 
 rows = {}
 in_sec = False
