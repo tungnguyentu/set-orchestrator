@@ -9,7 +9,7 @@ Gives this session a durable coordinator role: **bind a Run -> list same-pane ag
 
 ## 0. Orca CLI
 
-Resolve the executable in this order: `$ORCA_CLI_COMMAND` when set (Orca exports it inside its terminals); `orca-dev` when `$ORCA_DEV_REPO_ROOT` is set (a dev checkout); `orca-ide` on Linux outside an Orca-managed terminal; otherwise `orca`. Below, `ORCA` is a placeholder for it; never hardcode `orca`. Always pass `--json`. Scripts live in this skill's `scripts/` directory; call them by path relative to the skill directory.
+Resolve the executable in this order: `$ORCA_CLI_COMMAND` when set (Orca exports it inside its terminals); `orca-dev` when `$ORCA_DEV_REPO_ROOT` is set (a dev checkout); `orca-ide` on Linux outside an Orca-managed terminal; otherwise `orca`. Below, `ORCA` is a placeholder for it; never hardcode `orca`. Always pass `--json`. Scripts are in this skill's `scripts/` directory; call them by that path.
 
 State file: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<self-handle>.json` (`:` in a chat address becomes `_`), holding `{run_id, self_handle, pane_path, roster[], opened[], autocompact[], skill_family, started, objective, gate, dispatches[], frontier_accepted, context_resets}`. Each `roster[]` entry carries `handle, title, agent` and `model`/`effort` when known; each `dispatches[]` entry (task, dispatch, terminal, status, attempt, `spec_hash`, `gate_hash`, `tier`, `model`, `effort`, `tier_override`, `frontier_quote`, verify result) is written by `dispatch.sh` and `settle.sh` under a lock. It lives outside the worktree, so workers cannot rewrite it, and it is how the role survives compaction or a new session. Field detail: `references/coordinator-loop.md`, "State file". `off` deletes the file, which is what closes the Run for the optional hook below.
 
@@ -53,7 +53,7 @@ A failed Task is retried once, one rung up (same model with higher effort, else 
 
 | File | Read it when |
 |---|---|
-| `references/setup.md` | running `on`, `status` or `off`, or opening or renaming agents mid-run |
+| `references/setup.md` | running `on`, `status` or `off`, opening or renaming agents mid-run, or this session is Pi |
 | `references/coordinator-loop.md` | writing a spec or brief, dispatching, verifying, retrying, writing the final report, or checking the state file and anti-skip rules |
 | `references/model-routing.md` | choosing a tier, switching a worker's model, handling `fable`, or a tier or frontier exit code |
 | `references/multi-agent-anti-skip.md` | the gate, `specHash`, evidence classes or a non-Claude worker behaves oddly |

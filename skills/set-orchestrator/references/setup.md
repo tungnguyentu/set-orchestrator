@@ -31,3 +31,15 @@ Read the state file for this self handle (a fresh session outside Orca does not 
 1. `ORCA orchestration worker-list --run <run_id> --terminal-state reclaimable --json`; for each row still owing a decision, ask the user or `worker-retain`; run `worker-release` only when told to or when it is the owned worker you created. Terminals the user opened come back `retained/external_terminal` and are never closed.
 2. Active Dispatches: tell the user; do not abandon or stop without their word.
 3. Terminals in `opened[]` that are idle: ask the user once whether to close them, then `ORCA terminal close --terminal <h> --json` for each agreed handle. No `reset`. Delete the state file. Tell the user the role is removed.
+
+## Pi as the orchestrator
+
+A Pi session (https://pi.dev/) in an Orca terminal can be the orchestrator. Install once with `bash scripts/install-pi.sh`: it links this skill into `${PI_CODING_AGENT_DIR:-~/.pi/agent}/skills/set-orchestrator` and copies `scripts/pi-orchestrator-extension.ts` to Pi's `extensions/` folder. Then, in Pi, the commands are `/skill:set-orchestrator on`, `/skill:set-orchestrator status` and `/skill:set-orchestrator off`. Everything in this skill applies, with these differences:
+
+- No hooks. Pi does not run Claude Code hooks, so `orchestrator-resume-hook.sh` and `orchestrator-ask-hook.sh` are not installed in a settings file. The extension does their work before each run of the agent: while the Run's state file exists it appends the role text (Run, workers, open dispatches, closing rules, last Tasks) to the system prompt, and it adds the work-log lookup for the user's prompt as a hidden message. There is no check before a question reaches the user; run `worklog.py search` yourself before you ask. Skip the hook check of `on` step 11; check that `extensions/set-orchestrator.ts` exists instead.
+- State file. The path is the same, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/orchestrator/<self-handle>.json`; in a Pi terminal `CLAUDE_CONFIG_DIR` is normally not set, so it is under `~/.claude/orchestrator/`. A Run started by a Claude session with another config directory is a different state file.
+- Waiting. Pi's `bash` tool has no background mode. Run `ORCA orchestration check --wait ... --timeout-ms 540000` as a normal call and allow it at least 560 seconds; when your tool timeout is shorter, lower `--timeout-ms` to fit and call it again.
+- Your own context. Pi compacts by itself (`compaction.enabled`); there is no status line percentage to read. After a compaction the extension restores the role; run `status` when you are not sure of the open dispatches.
+- Tiers. `dispatch.sh --tier` and the frontier rule work as in Claude Code, because they read the workers' models from `roster[]`. The model of the Pi session itself is not checked.
+- Skills for workers. The skill family is detected from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`, not from Pi's folders; pass `--skills` when that is not what the workers have.
+

@@ -6,8 +6,10 @@ Run:  python3 -m unittest discover -s scripts/tests
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 import test_checklist_gate as base
@@ -359,6 +361,45 @@ class TestDispatchRecordsBaseline(GuardBase):
 
     def test_other_families_get_no_such_line(self):
         self.assertNotIn("Method skills", self.brief_of(self.to("term_w2")))
+
+
+class TestInstallPi(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="orca-pi-")
+        self.env = {"PI_CODING_AGENT_DIR": os.path.join(self.tmp, "agent")}
+        self.dest = os.path.join(self.tmp, "agent", "skills", "set-orchestrator")
+        self.ext = os.path.join(self.tmp, "agent", "extensions", "set-orchestrator.ts")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def run_it(self, *args):
+        return sh(["bash", os.path.join(SCRIPTS, "install-pi.sh"), *args], self.tmp, self.env)
+
+    def test_link_then_uninstall(self):
+        self.assertEqual(self.run_it().returncode, 0)
+        self.assertTrue(os.path.islink(self.dest))
+        self.assertTrue(os.path.isfile(os.path.join(self.dest, "SKILL.md")))
+        self.assertTrue(os.path.isfile(self.ext))
+        self.assertEqual(self.run_it().returncode, 0)  # a second run replaces its own link
+        self.assertEqual(self.run_it("--uninstall").returncode, 0)
+        self.assertFalse(os.path.lexists(self.dest))
+        self.assertFalse(os.path.exists(self.ext))
+        self.assertTrue(os.path.isfile(os.path.join(SCRIPTS, "dispatch.sh")))  # the skill itself is untouched
+
+    def test_copy_then_uninstall(self):
+        self.assertEqual(self.run_it("--copy").returncode, 0)
+        self.assertFalse(os.path.islink(self.dest))
+        self.assertTrue(os.path.isfile(os.path.join(self.dest, "scripts", "dispatch.sh")))
+        self.assertEqual(self.run_it("--uninstall").returncode, 0)
+        self.assertFalse(os.path.exists(self.dest))
+
+    def test_a_foreign_folder_is_left_alone(self):
+        os.makedirs(self.dest)
+        wr(os.path.join(self.dest, "mine.txt"), "x")
+        for args in ((), ("--uninstall",)):
+            self.assertEqual(self.run_it(*args).returncode, 3)
+        self.assertTrue(os.path.isfile(os.path.join(self.dest, "mine.txt")))
 
 
 if __name__ == "__main__":
