@@ -1,6 +1,6 @@
 # Multi-agent anti-skip contract
 
-Workers in one pane can be any mix of `claude`, `grok`, `codex` and `agy` (Antigravity). The critical path below uses only shell scripts, plain JSON files, the brief text and the coordinator's own verification, so it works the same for every agent. Agent hooks (Claude Stop hooks) are optional extras on top; nothing depends on them. `SKILL` below is the absolute path of this skill directory; `ORCA` is the resolved executable (SKILL.md section 0).
+Workers in one pane can be any mix of `claude`, `grok`, `codex`, `agy` (Antigravity) and `pi`. The critical path below uses only shell scripts, plain JSON files, the brief text and the coordinator's own verification, so it works the same for every agent. Agent hooks (Claude Stop hooks) are optional extras on top; nothing depends on them. `SKILL` below is the absolute path of this skill directory; `ORCA` is the resolved executable (SKILL.md section 0).
 
 ## 1. Shared contract (every agent)
 
@@ -136,6 +136,7 @@ After `worker_done`, even with `gate: passed`:
 | grok | none | orca-done.sh + coordinator verify |
 | codex | none | orca-done.sh + coordinator verify. A sandboxed Codex may not write `.git`; it still writes `.orca/` in the worktree. If it cannot run `orca` at all, it falls back to the FB block (`--fb-nonce`) |
 | agy | none | orca-done.sh + coordinator verify |
+| pi | none | orca-done.sh + coordinator verify. Pi runs every tool call without asking. It reads `AGENTS.md` and `CLAUDE.md`, and loads skills from `~/.pi/agent/skills`, `~/.agents/skills` and the project's `.pi/skills` or `.agents/skills`, not from `~/.claude/skills`; it calls a skill as `/skill:<name>`. A skill the Method line names is missing there unless you installed it for Pi, and the worker then says so and works without it. A new context is `/new`; `fresh-worker.sh` does not handle Pi, which compacts by itself |
 
 Claude Stop hook (optional) in short: it reads the hook's stdin, exits 0 when `stop_hook_active` is true (no loops), finds checklists under `<repo>/.orca/tasks/*/` whose `worker` equals `$ORCA_TERMINAL_HANDLE` and that have no `done.json`, and exits 2 with the misses on stderr so Claude keeps working. Settings fragment:
 
@@ -143,7 +144,7 @@ Claude Stop hook (optional) in short: it reads the hook's stdin, exits 0 when `s
 {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash <SKILL_DIR>/scripts/claude-stop-hook.sh", "timeout": 120}]}]}}
 ```
 
-Grok, Codex and agy have no equivalent; never make a Task depend on a hook.
+Grok, Codex, agy and Pi have no equivalent; never make a Task depend on a hook.
 
 ## 12. Branch A (agent ignores worker_done) and FB nonce
 

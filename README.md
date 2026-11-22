@@ -2,14 +2,14 @@
 
 A [Claude Code](https://docs.claude.com/en/docs/claude-code) skill that turns the current Claude session into the standing orchestrator for the agents open in the same [Orca](https://www.onorca.dev) pane. After `on`, the session stops writing code itself. It splits your requests into self-contained tasks, dispatches them to idle agents in that pane through `orca orchestration`, waits for `worker_done`, verifies the result, and reports.
 
-Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Codex, Grok, Antigravity (`agy`), and others.
+Workers can be any TUI agent that Orca recognizes in the pane: Claude Code, Codex, Grok, Antigravity (`agy`), Pi (`pi`), and others.
 
 ## Requirements
 
 - Claude Code 2.1 or newer, running inside an Orca terminal tab or an Orca chat tab. A terminal identifies itself by `ORCA_TERMINAL_HANDLE`; a chat tab by `ORCA_AGENT_SESSION_ID`, which Orca injects into the chat's shell (its mailbox address is `orca_session_id:<id>`). Workers are always terminal tabs.
 - Orca 1.4.227 or newer, with the `orca` CLI on `PATH`. The skill uses `orca orchestration`, `orca terminal` and `orca status`.
 - Python 3 and bash for the helper scripts.
-- Optional: the agent CLIs you want the orchestrator to open for you (`claude`, `grok`, `codex`, `agy`).
+- Optional: the agent CLIs you want the orchestrator to open for you (`claude`, `grok`, `codex`, `agy`, `pi`).
 - Optional: one workflow skill family for the workers: AgentKit (`ak-*` skills), [compound-engineering](https://github.com/EveryInc/compound-engineering-plugin), [superpowers](https://github.com/obra/superpowers), or [pstack](https://github.com/backnotprop/pstack). See `--skills` below. Without one, workers work directly.
 - Optional: a `cc-launch` wrapper at `~/.local/bin/cc-launch`. When present, Claude workers opened with `--open` use it. When absent, they start with plain `claude`.
 
@@ -85,7 +85,7 @@ You can also start it in words, in English or your own language: "set this sessi
 
 ### `--open`
 
-Opens agent terminals in the same pane, one per entry, each started in a non-prompting permission mode. Agents: `claude`, `grok`, `codex`, `agy` (Antigravity). `claude:2` opens two. Each new tab is named `<agent>-<n>`. Claude workers start with `cc-launch --permission-mode auto` when that wrapper exists, otherwise `claude --permission-mode auto`, and inherit the orchestrator's `CLAUDE_CONFIG_DIR`.
+Opens agent terminals in the same pane, one per entry, each started in a non-prompting permission mode. Agents: `claude`, `grok`, `codex`, `agy` (Antigravity), `pi` ([Pi](https://pi.dev/)). Pi has no permission prompts, so it gets no flag; `pi@sonnet/high` starts `pi --model sonnet --thinking high`. A model id with a slash (`provider/id`) cannot be written in `--open`; use the short pattern. If `pi` fails because the default `node` is older than 22.19, set `ORCH_PI_CMD`, for example `ORCH_PI_CMD="/opt/homebrew/bin/node /opt/homebrew/bin/pi"`. Pi loads skills from its own folders (`~/.pi/agent/skills`, `~/.agents/skills`), not from `~/.claude/skills`. `claude:2` opens two. Each new tab is named `<agent>-<n>`. Claude workers start with `cc-launch --permission-mode auto` when that wrapper exists, otherwise `claude --permission-mode auto`, and inherit the orchestrator's `CLAUDE_CONFIG_DIR`.
 
 Add `@<model>` and optionally `/<effort>` to pick what each worker runs on:
 
@@ -144,7 +144,7 @@ Detection order is `pstack`, `ak`, `ce`, `superpowers`. pstack skills cannot be 
 
 1. Confirms Orca is up and finds this session's own terminal handle and pane.
 2. Binds or creates an Orca orchestration Run with your objective.
-3. With `--open`, creates the requested terminals in the same pane (Claude `--permission-mode auto`, Grok `--permission-mode bypassPermissions`, Codex `--dangerously-bypass-approvals-and-sandbox`, Antigravity `--dangerously-skip-permissions`).
+3. With `--open`, creates the requested terminals in the same pane (Claude `--permission-mode auto`, Grok `--permission-mode bypassPermissions`, Codex `--dangerously-bypass-approvals-and-sandbox`, Antigravity `--dangerously-skip-permissions`, Pi with no flag).
 4. Lists the eligible workers in the pane, picks the skill family, and writes a state file so the role survives compaction or a new session.
 5. Sets a 300k auto-compact window on every Claude worker and on itself.
 6. Renames the tabs: the orchestrator becomes `orchestrator`, workers become `<agent>-<n>`. While a worker is busy, its tab shows the task title.

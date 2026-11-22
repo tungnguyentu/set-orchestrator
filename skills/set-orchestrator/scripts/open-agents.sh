@@ -3,7 +3,7 @@
 # bypass-permissions flag, and wait until Orca reports the agent identity.
 #
 # Usage: open-agents.sh --pane <worktreePath> --open <spec> [--next <n>] [--orca <exe>]
-#   --open   comma list of <agent>[:<count>][@<model>[/<effort>]], agents: claude, grok, codex, agy
+#   --open   comma list of <agent>[:<count>][@<model>[/<effort>]], agents: claude, grok, codex, agy, pi
 #            e.g. claude:2@sonnet,claude@opus/high,codex. Without @model the agent uses its default.
 #   --next   first number to use in the "<agent>-<n>" title (default 1)
 # Prints one JSON object per line: {"handle","agent","title","ok","error","model","effort"}.
@@ -24,7 +24,10 @@ done
 [ -n "$PANE" ] && [ -n "$SPEC" ] || { echo "open-agents.sh: --pane and --open are required" >&2; exit 2; }
 
 # Launch commands. Claude starts in auto mode (bypass is disabled in the global
-# settings); the others keep their bypass flag. CC_LAUNCH keeps the shared
+# settings); the others keep their bypass flag. Pi has no permission prompts and so
+# no flag; its effort is --thinking. ORCH_PI_CMD replaces the command "pi", for a
+# machine where the default node is older than Pi needs (Node 22.19), for example
+# ORCH_PI_CMD="/opt/homebrew/bin/node /opt/homebrew/bin/pi". CC_LAUNCH keeps the shared
 # Serena wrapper when it is installed; CLAUDE_CONFIG_DIR is inherited from the
 # orchestrator so the worker uses the same account.
 CC_LAUNCH="$HOME/.local/bin/cc-launch"
@@ -36,6 +39,7 @@ launch_cmd() {  # <agent> [model] [effort]
     grok) printf 'grok --permission-mode bypassPermissions%s%s' "${m:+ -m $m}" "${e:+ --effort $e}" ;;
     codex) printf 'codex --dangerously-bypass-approvals-and-sandbox%s%s' "${m:+ -m $m}" "${e:+ -c model_reasoning_effort=$e}" ;;
     agy|antigravity) printf 'agy --dangerously-skip-permissions%s%s' "${m:+ --model $m}" "${e:+ --effort $e}" ;;
+    pi) printf '%s%s%s' "${ORCH_PI_CMD:-pi}" "${m:+ --model $m}" "${e:+ --thinking $e}" ;;
     *) return 1 ;;
   esac
 }
@@ -66,7 +70,7 @@ for item in "${items[@]}"; do
   agent="${base%%:*}"; count=1
   [ "$base" != "$agent" ] && count="${base#*:}"
   case "$count" in ''|*[!0-9]*) emit "" "$agent" "" 0 "bad count in '$item'"; rc=1; continue ;; esac
-  cmd="$(launch_cmd "$agent" "$model" "$effort")" || { emit "" "$agent" "" 0 "unknown agent id (use claude, grok, codex, agy)"; rc=1; continue; }
+  cmd="$(launch_cmd "$agent" "$model" "$effort")" || { emit "" "$agent" "" 0 "unknown agent id (use claude, grok, codex, agy, pi)"; rc=1; continue; }
   want="$(identity_of "$agent")"
   i=0
   while [ "$i" -lt "$count" ]; do
