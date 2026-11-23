@@ -14,7 +14,7 @@ import unittest
 
 import test_checklist_gate as base
 from test_checklist_gate import PY, SCRIPTS, rd, rj, sh, wj, wr
-from test_dispatch_context_guards import GuardBase, HOOK, ST, seed_entry
+from test_dispatch_context_guards import GuardBase, HOOK, OLD, ST, seed_entry
 
 sys.path.insert(0, SCRIPTS)
 from checklist_spec import spec_hash  # noqa: E402
@@ -361,6 +361,84 @@ class TestDispatchRecordsBaseline(GuardBase):
 
     def test_other_families_get_no_such_line(self):
         self.assertNotIn("Method skills", self.brief_of(self.to("term_w2")))
+
+
+class TestScopeCheck(GuardBase):
+    SCOPE = os.path.join(SCRIPTS, "scope-check.py")
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, check=True, capture_output=True, text=True).stdout.strip()
+
+    def start(self, handle="term_w1"):
+        r = self.to(handle)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        task = json.loads(r.stdout.strip().splitlines()[-1])["taskId"]
+        st = rj(self.state)
+        for d in st["dispatches"]:
+            if d["task_id"] == task:
+                d["started"] = OLD  # the commits below are surely after the start
+        wj(self.state, st)
+        return task
+
+    def scope(self, *args):
+        return sh([PY, self.SCOPE, *args, "--state", self.state], self.tmp)
+
+    def test_committed_file_outside_ownership_is_listed(self):
+        task = self.start()  # Ownership: src/app.py
+        wr(os.path.join(self.repo, "src", "app.py"), "a = 2\n")
+        wr(os.path.join(self.repo, "src", "other.py"), "x = 1\n")
+        self.git("add", "src/app.py", "src/other.py")
+        self.git("commit", "-qm", "change")
+        wr(os.path.join(self.repo, "notes.txt"), "the user's uncommitted note\n")
+        r = self.scope("--task", task, "--json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        self.assertEqual([o["path"] for o in out["outside"]], ["src/other.py"])
+        self.assertEqual((out["inside"], out["others"]), (1, []))
+        text = self.scope("--task", task).stdout
+        self.assertIn("scope: 1 file(s) outside Ownership", text)
+        self.assertIn("- src/other.py", text)
+        self.assertNotIn("notes.txt", text)
+
+    def test_clean_task_and_no_commit(self):
+        task = self.start()
+        self.assertIn("scope: 0 file(s) outside Ownership in 0 commit(s)", self.scope("--task", task).stdout)
+        wr(os.path.join(self.repo, "src", "app.py"), "a = 3\n")
+        self.git("commit", "-qam", "inside only")
+        self.assertIn("scope: 0 file(s) outside Ownership in 1 commit(s)", self.scope("--task", task).stdout)
+
+    def test_file_of_a_task_that_ran_at_the_same_time_is_not_mine(self):
+        task = self.start()
+        other = seed_entry("t_other", "term_w2", "active", started=OLD)
+        self.seed(other)
+        wr(os.path.join(self.state_dir, "briefs", "t_other.txt"),
+           f"Checklist: {self.repo}/.orca/tasks/t_other/checklist.json\nOwnership: docs/ src/lib.py\n")
+        os.makedirs(os.path.join(self.repo, "docs"))
+        wr(os.path.join(self.repo, "docs", "guide.md"), "x\n")
+        wr(os.path.join(self.repo, "README.md"), "x\n")
+        self.git("add", "docs/guide.md", "README.md")
+        self.git("commit", "-qm", "two files")
+        out = json.loads(self.scope("--task", task, "--json").stdout)
+        self.assertEqual([o["path"] for o in out["outside"]], ["README.md"])
+        self.assertEqual(out["others"], [{"path": "docs/guide.md", "task": "t_other"}])
+
+    def test_bad_input(self):
+        self.assertEqual(self.scope().returncode, 2)
+        self.assertEqual(self.scope("--task", "nope").returncode, 2)
+
+    def test_contract_points_at_the_project_memory_when_it_exists(self):
+        root = os.path.dirname(self.git("rev-parse", "--path-format=absolute", "--git-common-dir"))
+        mem = os.path.join(self.tmp, "cfg", "projects", "".join(c if c.isalnum() and c.isascii() else "-" for c in root),
+                           "memory", "MEMORY.md")
+        cmd = ["bash", os.path.join(SCRIPTS, "install-worker-contract.sh"), "--pane", self.repo,
+               "--skill", os.path.dirname(SCRIPTS), "--family", "none", "--orca", self.orca]
+        contract = os.path.join(self.repo, ".orca", "worker-contract.md")
+        self.assertEqual(sh(cmd, self.repo, self.env).returncode, 0)
+        self.assertNotIn("MEMORY.md", rd(contract))
+        os.makedirs(os.path.dirname(mem))
+        wr(mem, "- [Decision](d.md) - a decision\n")
+        self.assertEqual(sh(cmd, self.repo, self.env).returncode, 0)
+        self.assertIn(mem, rd(contract))
 
 
 class TestInstallPi(unittest.TestCase):

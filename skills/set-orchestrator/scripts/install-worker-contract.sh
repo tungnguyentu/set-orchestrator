@@ -74,6 +74,22 @@ if ref and ref.group(1) in rows:
     context = rows[ref.group(1)][1]
 method_block = f"Skill family: `{family}`. {method} {TAIL}"
 context_block = context
+# Decisions the user already made live in Claude Code's project memory. Claude workers have it in
+# context; Codex, Grok, Antigravity and Pi workers do not, so the contract points at the file.
+import subprocess
+pane = os.path.dirname(os.path.dirname(dest))
+try:
+    common = subprocess.run(["git", "-C", pane, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True, timeout=10).stdout.strip()
+except Exception:
+    common = ""
+# worktrees share the memory of the main repository
+root = os.path.dirname(common) if os.path.basename(common) == ".git" else pane
+memory = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"), "projects",
+                      re.sub(r"[^A-Za-z0-9]", "-", root), "memory", "MEMORY.md")
+if os.path.isfile(memory):
+    context_block += (f" Decisions the user already made for this project are listed in `{memory}`; when you are not "
+                      "a Claude Code session, read it once before you change a screen, a column, a text or a data rule.")
 skill_block = None  # taken from rendered template
 
 tpl = open(template, encoding="utf-8").read()

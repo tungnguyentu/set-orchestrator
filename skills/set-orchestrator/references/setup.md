@@ -30,7 +30,8 @@ Read the state file for this self handle (a fresh session outside Orca does not 
 
 1. `ORCA orchestration worker-list --run <run_id> --terminal-state reclaimable --json`; for each row still owing a decision, ask the user or `worker-retain`; run `worker-release` only when told to or when it is the owned worker you created. Terminals the user opened come back `retained/external_terminal` and are never closed.
 2. Active Dispatches: tell the user; do not abandon or stop without their word.
-3. Terminals in `opened[]` that are idle: ask the user once whether to close them, then `ORCA terminal close --terminal <h> --json` for each agreed handle. No `reset`. Delete the state file. Tell the user the role is removed.
+3. Reflect before the state file is gone: read `python3 scripts/worklog.py recent -n 20` and write to the project's memory (a) every product decision of the user that is not there yet and (b) a mistake that workers made more than once in this Run, as one rule for the next spec. Skip it when nothing is new; do not write a summary of the Run.
+4. Terminals in `opened[]` that are idle: ask the user once whether to close them, then `ORCA terminal close --terminal <h> --json` for each agreed handle. No `reset`. Delete the state file. Tell the user the role is removed.
 
 ## Pi as the orchestrator
 

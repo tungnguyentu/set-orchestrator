@@ -10,6 +10,7 @@ Read this when a worker agent does not send `worker_done`, when an agent type is
 
 ## Pitfalls
 
+- A build, test run, deploy or script that fails for no reason in the diff: suspect state before code. Check in this order and stop at the first cause: (1) the Run's own state (state file, an open Dispatch on the terminal, a changed gate hash), (2) the environment (tool and runtime versions, PATH, a stale cache, a server left running), (3) configuration, (4) leftover files (locks, temp files, half-written output), (5) only then the code. Put that order into the spec of the fix Task, and have the worker reproduce the failure with the exact command before it changes anything.
 - `worktreePath` differing from the pane (even the same agent type): not eligible. The parent repo counts; a submodule path does not.
 - `ORCA status --json` has no caller handle outside a terminal; do not infer self from it.
 - `--worktree current` outside a terminal silently resolves to the coordinator's worktree; pass `path:"<pane>"`.
