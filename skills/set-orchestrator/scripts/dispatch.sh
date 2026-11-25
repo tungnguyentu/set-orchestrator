@@ -32,12 +32,9 @@
 # (orch_state.py model-tier). A different tier exits 5 and lists the roster workers of the Task's
 # tier; --tier-override "<reason>" lets it through and stores the reason as tier_override. Without
 # --tier the dispatch proceeds with a warning. The entry records tier, model and effort.
-# Frontier guard: a Task is frontier when --tier frontier is given or the worker's model maps to
-# frontier (fable). It needs the user's acceptance for that Task, either a prior
-# "orch_state.py accept-frontier STATE TASK --quote ..." record (with --task) or
-# --frontier-accepted "<user's words>", stored once the Task id is known. Neither: exit 6.
-# --tier-override never bypasses it. A fable worker given a non-frontier Task needs only the
-# acceptance (no override). The entry records frontier_quote.
+# Frontier (fable) is an ordinary tier: the user allows it without a question, so there is no
+# acceptance step. --frontier-accepted "<user's words>" and "orch_state.py accept-frontier" are
+# still accepted and recorded as frontier_quote, but nothing requires them.
 # Open-dispatch guard (before anything is created, after the input checks): one open Dispatch per
 # terminal. Any other Task of the state file with this --to terminal and status dispatched or active
 # exits 7, naming the worker and each open Task (id, title, start time). Settle each with the frozen
@@ -53,7 +50,7 @@
 # Other agents (codex, grok, antigravity) are not checked. A --resend of a Task already in the state is not blocked by, nor
 # counted with, its own entry.
 # Exit: 0 dispatched and sent; 4 gate scripts changed (nothing created); 2 bad input; 3 already active (nothing sent); 1 an Orca step failed;
-# 5 Task tier differs from the worker's tier (nothing created); 6 frontier dispatch without the user's acceptance (nothing created);
+# 5 Task tier differs from the worker's tier (nothing created); 6 not used any more (was: frontier dispatch without the user's acceptance);
 # 7 the terminal has another open Dispatch (nothing created); 8 the Claude worker's context is full (nothing created).
 set -uo pipefail
 
@@ -189,15 +186,9 @@ ACCEPTED_QUOTE="$FRONTIER_QUOTE"
 if [ -z "$ACCEPTED_QUOTE" ] && [ -n "$TASK" ]; then ACCEPTED_QUOTE="$(python3 "$ST" frontier-accepted "$STATE" "$TASK" quote 2>/dev/null || true)"; fi
 IS_FRONTIER=0; { [ "$TIER" = frontier ] || [ "$W_TIER" = frontier ]; } && IS_FRONTIER=1
 [ "$IS_FRONTIER" = 1 ] || ACCEPTED_QUOTE=""
-if [ "$IS_FRONTIER" = 1 ]; then
-  if [ -z "$ACCEPTED_QUOTE" ]; then
-    echo "dispatch.sh: frontier dispatch (Task tier '${TIER:-none}', worker $AGENT_TITLE on '${W_MODEL:-unknown}' = $W_TIER) needs the user's yes for this Task; nothing created. Ask the user, then pass --frontier-accepted \"<their words>\" (or run: orch_state.py accept-frontier $STATE <task id> --quote \"<their words>\" and pass --task). --tier-override does not bypass this." >&2
-    exit 6
-  fi
-fi
 if [ -z "$TIER" ]; then
   echo "dispatch.sh: WARNING no --tier given; the Task's tier was not checked against the worker (${AGENT_TITLE} on '${W_MODEL:-unknown}' = $W_TIER)." >&2
-elif [ "$TIER" != "$W_TIER" ] && [ "$W_TIER" != frontier ]; then
+elif [ "$TIER" != "$W_TIER" ]; then
   if [ -n "$TIER_OVERRIDE" ]; then
     echo "dispatch.sh: tier override accepted ($TIER Task on $W_TIER worker): $TIER_OVERRIDE" >&2
   else

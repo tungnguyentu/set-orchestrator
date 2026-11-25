@@ -13,7 +13,7 @@ Pick the lowest tier whose description fits the Task. `Tier` goes in the Task sp
 | `light` | Extraction, classification, log or file reading, search across many files, mechanical renames with a test that proves them | `haiku` | their small or fast model |
 | `standard` | Clearly specified change with exact acceptance commands; routine bug fix with a known cause; tests for existing code | `sonnet` | their default model |
 | `heavy` | Design decision inside the Task, debugging with an unknown cause, cross-module change, anything the user called risky | `opus` | their strongest model |
-| `frontier` | Large migration or a research-grade problem that `heavy` already failed, or the user asked for it. Only with the user's yes for that Task (next section) | `fable` | none; ask the user |
+| `frontier` | Large migration or a research-grade problem that `heavy` already failed, or the user asked for it. No question to the user is needed (next section) | `fable` | none; use `heavy` |
 
 ### Tier guard in `dispatch.sh`
 
@@ -25,22 +25,11 @@ The tier is checked by code, not by memory. The state file's `roster[]` is the o
 
 The orchestrator session itself plans, writes specs and verifies. That is `heavy` work; do not run the orchestrator on a `light` model.
 
-## Frontier needs the user's yes
+## Frontier without a question
 
-`fable` runs only after the user accepts it for that Task. This holds for every way a Task can reach it:
+The user allows `fable` without a question. `frontier` is an ordinary tier: send a `frontier` Task to a worker on `fable`, switch a worker to `fable` with `/model`, take `frontier` as the next rung of a retry, or name `fable` for a subagent, all without asking. The cost rule above still holds: do not start above the tier the Task needs, and move up only after a gate failure.
 
-- sending a Task to a worker that already runs `fable`, even when that worker is idle and nothing else is;
-- switching a worker to `fable` with `/model`;
-- a retry whose next rung is `frontier`;
-- a subagent model named in a spec or a brief.
-
-Ask once per Task, in one line: the Task, why `heavy` is not enough (or that `heavy` failed the gate, with the failing item), and the alternative if the user says no. Then wait. Other Tasks keep running while you wait.
-
-A yes covers that Task only, not later Tasks and not the rest of the Run, unless the user says so in plain words ("use fable for all of these"). Record the acceptance with the user's own words: `python3 scripts/orch_state.py accept-frontier <state file> <task id> --quote "<the user's words>"` (an empty quote is refused), or, when the Task does not exist yet, pass `dispatch.sh --frontier-accepted "<the user's words>"`, which writes the same record once the Task id is known. The record is `frontier_accepted[<task id>] = {quote, at}` in the state file, the entry keeps it as `frontier_quote`, and the final report lists it.
-
-`dispatch.sh` enforces this. A Task counts as frontier when `--tier frontier` is given or the target worker's model maps to `frontier`; without an acceptance record for that Task (an `accept-frontier` record plus `--task <id>`, or `--frontier-accepted`) it exits 6 before the brief is sent and before the Task is created. `--tier-override` never bypasses it. A `fable` worker given a non-frontier Task is a tier mismatch and a frontier dispatch at once: the acceptance alone is enough, no override is needed. A `frontier` Task sent to a worker that is not on `fable` is still a tier mismatch and needs `--tier-override` as well as the acceptance. On a no or no answer, stay on `heavy`: run the Task there, or stop a failed Task after its `heavy` attempt and report it.
-
-The user naming `fable` in their own request (`--open claude@fable`, "give this to fable") is the yes for the Tasks that request names. A worker the user opened on `fable` for one Task is not a yes for the next one: treat it as a `heavy` worker for routing and ask before sending it `frontier` work, or leave it idle when a cheaper worker fits.
+`dispatch.sh` treats `frontier` like the other tiers: a `frontier` Task on a worker that is not on `fable`, or another tier's Task on a `fable` worker, is a tier mismatch (exit 5) and needs `--tier-override "<reason>"`. Exit 6 is not used any more. `dispatch.sh --frontier-accepted "<the user's words>"` and `orch_state.py accept-frontier <state file> <task id> --quote "<the user's words>"` still work and store the words (`frontier_accepted[<task id>]`, `frontier_quote` in the entry); use them when the user did ask for `fable` by name, so the final report shows it.
 
 ## Opening workers with a model
 

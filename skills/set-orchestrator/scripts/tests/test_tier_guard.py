@@ -123,24 +123,19 @@ class TestTierGuard(TierBase):
 class TestFrontierGuard(TierBase):
     QUOTE = "yes, use fable for this one"
 
-    def test_frontier_task_without_acceptance_exits_6(self):
+    def test_frontier_task_needs_no_acceptance(self):
         r = self.to("term_w3", "--tier", "frontier")
-        self.assertEqual(r.returncode, 6, r.stderr)
-        self.created_nothing()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        e = self.entry()
+        self.assertEqual((e["tier"], e["model"]), ("frontier", "fable"))
+        self.assertNotIn("frontier_quote", e)
+        self.assertNotIn("frontier_accepted", rj(self.state))
 
-    def test_override_does_not_bypass_it(self):
-        r = self.to("term_w3", "--tier", "frontier", "--tier-override", "because")
-        self.assertEqual(r.returncode, 6)
-        r = self.to("term_w1", "--tier", "frontier", "--tier-override", "because")
-        self.assertEqual(r.returncode, 6)
-        self.created_nothing()
-
-    def test_fable_worker_alone_needs_acceptance_even_without_tier(self):
+    def test_fable_worker_without_tier_goes_through(self):
         r = self.to("term_w3")
-        self.assertEqual(r.returncode, 6)
-        self.created_nothing()
+        self.assertEqual(r.returncode, 0, r.stderr)
 
-    def test_accepted_flag_goes_through_and_stores_quote(self):
+    def test_accepted_flag_is_optional_and_stores_quote(self):
         r = self.to("term_w3", "--tier", "frontier", "--frontier-accepted", self.QUOTE)
         self.assertEqual(r.returncode, 0, r.stderr)
         rec = rj(self.state)["frontier_accepted"]["task_fake01"]
@@ -149,19 +144,19 @@ class TestFrontierGuard(TierBase):
         e = self.entry()
         self.assertEqual((e["tier"], e["model"], e["frontier_quote"]), ("frontier", "fable", self.QUOTE))
 
-    def test_fable_worker_with_non_frontier_task_needs_only_acceptance(self):
-        r = self.to("term_w3", "--tier", "standard", "--frontier-accepted", self.QUOTE)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        e = self.entry()
-        self.assertEqual(e["tier"], "standard")
-        self.assertNotIn("tier_override", e)
-        self.assertEqual(e["frontier_quote"], self.QUOTE)
-
-    def test_frontier_task_on_non_fable_worker_still_needs_override(self):
-        r = self.to("term_w2", "--tier", "frontier", "--frontier-accepted", self.QUOTE)
+    def test_fable_worker_with_another_tier_is_a_mismatch(self):
+        r = self.to("term_w3", "--tier", "standard")
         self.assertEqual(r.returncode, 5, r.stderr)
-        r = self.to("term_w2", "--tier", "frontier", "--frontier-accepted", self.QUOTE,
-                    "--tier-override", "no fable worker")
+        self.created_nothing()
+        r = self.to("term_w3", "--tier", "standard", "--tier-override", "only idle worker")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.entry()["tier_override"], "only idle worker")
+
+    def test_frontier_task_on_non_fable_worker_needs_override(self):
+        r = self.to("term_w2", "--tier", "frontier")
+        self.assertEqual(r.returncode, 5, r.stderr)
+        self.created_nothing()
+        r = self.to("term_w2", "--tier", "frontier", "--tier-override", "no fable worker")
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_prior_accept_record_with_task_id(self):
@@ -170,11 +165,6 @@ class TestFrontierGuard(TierBase):
         r = self.to("term_w3", "--tier", "frontier", "--task", "task_fake01")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.entry()["frontier_quote"], self.QUOTE)
-
-    def test_record_for_another_task_does_not_count(self):
-        sh([PY, ST, "accept-frontier", self.state, "task_other", "--quote", self.QUOTE], self.repo)
-        r = self.to("term_w3", "--tier", "frontier", "--task", "task_fake01")
-        self.assertEqual(r.returncode, 6)
 
     def test_empty_quote_is_an_error(self):
         for args in (["--quote", ""], ["--quote", "  "], []):
