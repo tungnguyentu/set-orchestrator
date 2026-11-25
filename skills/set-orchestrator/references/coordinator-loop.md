@@ -135,6 +135,28 @@ Use after an implement Task with more than ~3 Done-when items, a change touching
 3. Dispatch it when the implement Task settles, to a different idle terminal than the implement worker when one exists; prefer a worker of another agent type or another model than the implementer (Codex checks Claude's work, Claude checks Codex's), because a second model finds what the first one cannot see in its own work; same terminal only after `/clear` or equivalent.
 4. It completes through `orca-done.sh` like any Task. A finding = the implement Task failed verification: retry it once with "Previous attempt missed: <findings>".
 
+## Own subagent or a worker
+
+A worker in another terminal costs a brief, a checklist, a wait and a settlement. Use it for every change to the product. For read-only side work, start your own subagent when the session has a subagent tool (the Agent tool in Claude Code); otherwise do the work yourself or dispatch it.
+
+Start your own subagent when all of these hold:
+
+- the work changes no file in the pane (no edit, no commit, no migration, no generated file);
+- you need the result now to write a spec, to answer the user, or to judge a worker's result;
+- the result is a short report, not a diff.
+
+Typical cases: find where something lives across many files before you write a spec; read a long log or test output and return the failing lines; review the diff of a settled Task with a context that did not write it; compare two options and return a recommendation; check a fact in documentation or on the web; run `scope-check.py` and other read-only checks for several Tasks at once.
+
+Dispatch to a worker instead when the work edits product code, tests, configuration or data, however small the edit; when it needs the checklist gate or a commit; when it takes longer than about ten minutes; or when it needs a running application that a worker terminal already holds.
+
+Rules for your own subagent:
+
+- Say in its prompt that it is read-only and name the files or the question. Do not pass the whole conversation.
+- Set its model explicitly: a small model for search and log reading, a `heavy` model for a review or a design comparison.
+- It never closes a Task. A finished Task is still closed only by the frozen `settle.sh`, and a subagent review does not replace the acceptance commands.
+- It is not a Task: do not create a Dispatch or a work-log entry for it. Name it in your report to the user when its result changed a decision.
+- If it reports that a change is needed, write a spec and dispatch a Task. Do not let it make the change, and do not make it yourself.
+
 ## Method and Context lines per skill family
 
 `on` records the skill family in the state file (`skill_family`: `ak`, `ce`, `superpowers`, `pstack` or `none`; detected from the orchestrator's own skills directory and plugin cache, overridable with `--skills`). `install-worker-contract.sh` copies the family's two lines from this table into the Method and Context sections of `<pane>/.orca/worker-contract.md` (parsed from this table; keep its row format). They are not repeated in per-dispatch briefs. The script appends to every Method line how a Pi worker calls a skill (`/skill:<name>`, no plugin prefix) and: "If a named skill is not installed in this terminal, say so in your worker_done summary and work without it."

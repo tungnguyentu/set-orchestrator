@@ -95,6 +95,10 @@ Add `@<model>` and optionally `/<effort>` to pick what each worker runs on:
 
 Without `@<model>` the agent starts on its own default.
 
+### Own subagent or a worker
+
+Every change to the product goes to a worker in another terminal, through the checklist gate. Read-only side work (a search across many files, a long log, a review of a settled diff, a comparison of two options) can go to the orchestrator's own subagent instead: it is faster and needs no brief, no checklist and no settlement. A subagent never edits files and never closes a task. The cases and the rules are in `references/coordinator-loop.md`, section "Own subagent or a worker".
+
 ### Model routing
 
 The orchestrator keeps the cost of a finished task low, not the price of a token. Each task gets a tier (`light`, `standard`, `heavy`, `frontier`) and goes to a worker of that tier. The checklist gate decides whether it passed. Only a failed task moves up: first to a higher effort on the same model, then to the next tier. The `frontier` tier (`fable`) is an ordinary tier: the orchestrator uses it without asking when a task needs it. Work is split across several workers only when it is large, the parts are independent, and each part has its own check. The tier is enforced in code, not left to the model's memory:
